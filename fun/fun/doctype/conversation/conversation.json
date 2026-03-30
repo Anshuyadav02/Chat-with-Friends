@@ -1,0 +1,67 @@
+{
+    "actions": [],
+    "autoname": "hash",
+    "creation": "2026-03-30 00:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "user_1",
+        "user_2",
+        "start_date",
+        "end_date",
+        "messages"
+    ],
+    "fields": [
+        {
+            "fieldname": "user_1",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "User 1",
+            "options": "User",
+            "reqd": 1
+        },
+        {
+            "fieldname": "user_2",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "User 2",
+            "options": "User",
+            "reqd": 1
+        },
+        {
+            "fieldname": "start_date",
+            "fieldtype": "Date",
+            "in_list_view": 1,
+            "label": "Start Date"
+        },
+        {
+            "fieldname": "end_date",
+            "fieldtype": "Date",
+            "in_list_view": 1,
+            "label": "Last Active"
+        },
+        {
+            "fieldname": "messages",
+            "fieldtype": "Table",
+            "label": "Messages",
+            "options": "Chat Message"
+        }
+    ],
+    "modified": "2026-03-30 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Fun",
+    "name": "Conversation",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "read": 1,
+            "role": "System User",
+            "write": 1
+        }
+    ],
+    "sort_field": "end_date",
+    "sort_order": "DESC",
+    "track_changes": 0
+}
