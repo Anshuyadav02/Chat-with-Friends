@@ -496,6 +496,7 @@ export function useCallManager(options = {}) {
     if (isInCall.value) return
 
     incomingCall.value = buildCall(payload, 'incoming')
+    options.onIncomingCall?.(incomingCall.value, payload)
     callStatus.value = 'incoming'
     playTone('incoming')
     console.debug('[call] incoming event', payload)

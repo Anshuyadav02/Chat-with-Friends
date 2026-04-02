@@ -1,5 +1,5 @@
 import { io } from "socket.io-client"
-import { socketio_port } from "../../../../sites/common_site_config.json"
+import { socketio_port, webserver_port } from "../../../../sites/common_site_config.json"
 
 let socket = null
 
@@ -29,8 +29,17 @@ function getSiteName() {
 function getSocketHost() {
 	try {
 		const url = new URL(window.location.origin)
-		if (window.dev_server || ["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-			url.port = String(window.frappe?.boot?.socketio_port || socketio_port)
+		const currentPort = url.port || (url.protocol === "https:" ? "443" : "80")
+		const configuredSocketPort = String(window.frappe?.boot?.socketio_port || socketio_port)
+		const configuredWebPort = String(window.webserver_port || webserver_port || "")
+		const isLocalHost =
+			["localhost", "127.0.0.1"].includes(window.location.hostname) ||
+			window.location.hostname.endsWith(".localhost")
+		const shouldUseSocketPort =
+			window.dev_server || isLocalHost || (configuredWebPort && currentPort === configuredWebPort)
+
+		if (shouldUseSocketPort) {
+			url.port = configuredSocketPort
 		}
 		return url.toString().replace(/\/$/, "")
 	} catch {
@@ -49,12 +58,13 @@ export function initSocket() {
 		withCredentials: true,
 		reconnectionAttempts: 5,
 		transports: ["websocket", "polling"],
+		autoConnect: false,
 	})
 
 	socket.on('realtime', (data) => {
 		if (!data?.event) return
-		console.debug('[socket] realtime wrapper', data.event, data.data)
-		dispatchRealtimeEvent(data.event, data.data)
+		console.debug('[socket] realtime wrapper', data.event, data.message)
+		dispatchRealtimeEvent(data.event, data.message)
 	})
 
 	socket.on('connect', () => {
@@ -75,6 +85,19 @@ export function initSocket() {
 	})
 
 	return socket
+}
+
+export function connectSocket() {
+	const currentSocket = initSocket()
+	if (!currentSocket.connected) {
+		currentSocket.connect()
+	}
+	return currentSocket
+}
+
+export function disconnectSocket() {
+	if (!socket) return
+	socket.disconnect()
 }
 
 export function useSocket() {
