@@ -245,30 +245,62 @@ export function useCallManager(options = {}) {
     return ringtoneContext
   }
 
+  // Teams-style ringtone: ascending 4-note chime pattern
+  // incoming: E5→G#5→B5→E6 soft chime, repeats every 3.2s
+  // outgoing: C5→E5→G5 short pattern, repeats every 4s
+  function playNote(context, frequency, startTime, duration, volume = 0.08) {
+    const osc = context.createOscillator()
+    const gain = context.createGain()
+
+    osc.type = 'sine'
+    osc.frequency.value = frequency
+
+    // Smooth attack + decay envelope (Teams warm tone)
+    gain.gain.setValueAtTime(0, startTime)
+    gain.gain.linearRampToValueAtTime(volume, startTime + 0.03)
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration)
+
+    osc.connect(gain)
+    gain.connect(context.destination)
+    osc.start(startTime)
+    osc.stop(startTime + duration + 0.05)
+  }
+
+  function playTeamsChime(context, type) {
+    const now = context.currentTime
+
+    if (type === 'incoming') {
+      // Teams incoming: E5 G#5 B5 E6 — ascending warm chime
+      const notes = [659.25, 830.61, 987.77, 1318.51]
+      const noteDuration = 0.38
+      const gap = 0.12
+      notes.forEach((freq, i) => {
+        playNote(context, freq, now + i * (noteDuration - gap), noteDuration, 0.07)
+      })
+    } else {
+      // Teams outgoing: C5 E5 G5 — short dialing pattern
+      const notes = [523.25, 659.25, 783.99]
+      const noteDuration = 0.28
+      const gap = 0.08
+      notes.forEach((freq, i) => {
+        playNote(context, freq, now + i * (noteDuration - gap), noteDuration, 0.05)
+      })
+    }
+  }
+
   function playTone(type = 'incoming') {
     stopTone()
     const context = ensureRingtoneContext()
     if (!context) return
 
-    const frequencies = type === 'outgoing' ? [440, 554] : [880, 660]
-    let noteIndex = 0
-
-    const beep = () => {
-      const osc = context.createOscillator()
-      const gain = context.createGain()
-      osc.type = type === 'outgoing' ? 'triangle' : 'sine'
-      osc.frequency.value = frequencies[noteIndex % frequencies.length]
-      gain.gain.value = type === 'outgoing' ? 0.035 : 0.05
-      osc.connect(gain)
-      gain.connect(context.destination)
-      osc.start()
-      toneTimeout = window.setTimeout(() => osc.stop(), type === 'outgoing' ? 180 : 250)
-      noteIndex += 1
-    }
+    const repeatInterval = type === 'incoming' ? 3200 : 4000
 
     context.resume?.().catch(() => null)
-    beep()
-    toneInterval = window.setInterval(beep, type === 'outgoing' ? 850 : 1200)
+    playTeamsChime(context, type)
+    toneInterval = window.setInterval(() => {
+      context.resume?.().catch(() => null)
+      playTeamsChime(context, type)
+    }, repeatInterval)
   }
 
   function stopTone() {
@@ -286,18 +318,31 @@ export function useCallManager(options = {}) {
     if (!user?.name || isInCall.value) return
 
     const callType = type === 'video' ? 'Video' : 'Audio'
-    const payload = await request('initiate_call', {
-      receiver: user.name,
-      call_type: callType,
-    })
 
-    activeCall.value = buildCall(payload, 'outgoing')
-    callStatus.value = 'ringing'
-    playTone('outgoing')
-    console.debug('[call] outgoing initiated', payload)
-    await ensureLocalStream(activeCall.value.callType)
-    scheduleUnansweredTimeout(activeCall.value.callId)
-    options.onCallStateChange?.()
+    try {
+      const payload = await request('initiate_call', {
+        receiver: user.name,
+        call_type: callType,
+      })
+
+      activeCall.value = buildCall(payload, 'outgoing')
+      callStatus.value = 'ringing'
+      playTone('outgoing')
+
+      try {
+        await ensureLocalStream(activeCall.value.callType)
+      } catch (mediaError) {
+        console.warn('[call] media access failed, retrying with audio only', mediaError)
+        await ensureLocalStream('audio')
+      }
+
+      scheduleUnansweredTimeout(activeCall.value.callId)
+      options.onCallStateChange?.()
+    } catch (error) {
+      console.error('[call] startCall failed', error)
+      resetCallState()
+      options.onCallStateChange?.()
+    }
   }
 
   async function acceptIncomingCall() {
@@ -305,14 +350,34 @@ export function useCallManager(options = {}) {
 
     const acceptedCall = { ...incomingCall.value }
     stopTone()
-    console.debug('[call] accepting incoming call', acceptedCall)
-    await ensureLocalStream(acceptedCall.callType)
+
+    try {
+      await ensureLocalStream(acceptedCall.callType)
+    } catch (mediaError) {
+      console.warn('[call] media access failed, retrying with audio only', mediaError)
+      try {
+        await ensureLocalStream('audio')
+      } catch (audioError) {
+        console.error('[call] audio access also failed', audioError)
+        resetCallState()
+        options.onCallStateChange?.()
+        return
+      }
+    }
+
     activeCall.value = acceptedCall
     incomingCall.value = null
     callStatus.value = 'connecting'
-    await createPeerConnection(acceptedCall)
-    await request('accept_call', { call_id: acceptedCall.callId })
-    options.onCallStateChange?.()
+
+    try {
+      await createPeerConnection(acceptedCall)
+      await request('accept_call', { call_id: acceptedCall.callId })
+      options.onCallStateChange?.()
+    } catch (error) {
+      console.error('[call] accept failed', error)
+      resetCallState()
+      options.onCallStateChange?.()
+    }
   }
 
   async function rejectIncomingCall() {
