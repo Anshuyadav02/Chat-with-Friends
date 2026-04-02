@@ -82,7 +82,10 @@
 
 <script setup>
 import { ref } from "vue";
-import router from "../router";
+import router from "../router"
+import { useToast } from "vue-toastification";
+
+const toast = useToast();
 
 const email = ref("");
 const password = ref("");
@@ -126,13 +129,13 @@ const login_page = async () => {
     if (data.message === "Logged In" || data.message === "No App") {
       window.location.href = "/";
     } else {
-      alert("Invalid login credentials");
+      toast.error("Invalid login credentials");
       isFreezing.value = false;
     }
 
   } catch (error) {
     console.error("Login failed:", error);
-    alert("Server error, please try again");
+    toast.error("Server error, please try again");
     isFreezing.value = false;
   }
 };

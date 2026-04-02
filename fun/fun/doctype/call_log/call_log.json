@@ -1,0 +1,93 @@
+{
+    "actions": [],
+    "autoname": "field:call_id",
+    "creation": "2026-03-31 00:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "caller",
+        "receiver",
+        "call_type",
+        "status",
+        "start_time",
+        "end_time",
+        "duration",
+        "call_id"
+    ],
+    "fields": [
+        {
+            "fieldname": "caller",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Caller",
+            "options": "User",
+            "reqd": 1
+        },
+        {
+            "fieldname": "receiver",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Receiver",
+            "options": "User",
+            "reqd": 1
+        },
+        {
+            "fieldname": "call_type",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Call Type",
+            "options": "Audio\nVideo",
+            "reqd": 1
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Status",
+            "options": "Ringing\nOngoing\nMissed\nRejected\nCompleted",
+            "reqd": 1
+        },
+        {
+            "fieldname": "start_time",
+            "fieldtype": "Datetime",
+            "label": "Start Time"
+        },
+        {
+            "fieldname": "end_time",
+            "fieldtype": "Datetime",
+            "label": "End Time"
+        },
+        {
+            "fieldname": "duration",
+            "fieldtype": "Data",
+            "label": "Duration"
+        },
+        {
+            "fieldname": "call_id",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Call ID",
+            "reqd": 1,
+            "unique": 1
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-03-31 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Fun",
+    "name": "Call Log",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "read": 1,
+            "role": "System User",
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "track_changes": 1
+}

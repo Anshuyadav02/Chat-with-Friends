@@ -4,6 +4,9 @@ import App from "./App.vue"
 import router from "./router"
 import { initSocket } from "./socket"
 
+import Toast from "vue-toastification"
+import "vue-toastification/dist/index.css"
+
 import {
 	Alert,
 	Badge,
@@ -39,6 +42,9 @@ setConfig("resourceFetcher", frappeRequest)
 app.use(router)
 app.use(resourcesPlugin)
 app.use(pageMetaPlugin)
+
+// ✅ FIXED LINE
+app.use(Toast)
 
 const socket = initSocket()
 app.config.globalProperties.$socket = socket

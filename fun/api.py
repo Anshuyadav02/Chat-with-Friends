@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, add_days
+from frappe.utils import add_days, format_duration, now_datetime, time_diff_in_seconds
 
 
 # ─── Signup ───────────────────────────────────────────────────────────────────
@@ -31,18 +31,21 @@ def signup(first_name, last_name, email, password):
 
 @frappe.whitelist()
 def get_users():
-    current_user = frappe.session.user
-    users = frappe.get_all(
-        "User",
-        filters={
-            "name": ["not in", [current_user, "Guest"]],
-            "enabled": 1,
-            "user_type": "System User",
-        },
-        fields=["name", "full_name", "first_name", "last_name", "user_image"],
-        order_by="full_name asc",
-    )
-    return users
+    try:
+        current_user = frappe.session.user
+        users = frappe.get_all(
+            "User",
+            filters={
+                "name": ["not in", [current_user, "Guest"]],
+                "enabled": 1,
+            },
+            fields=["name", "full_name", "first_name", "last_name", "user_image"],
+            order_by="full_name asc",
+        )
+        return users
+    except Exception as e:
+        frappe.log_error(f"Error in get_users: {str(e)}")
+        return {"error": str(e)}
 
 
 # ─── Send Message ─────────────────────────────────────────────────────────────
@@ -188,3 +191,250 @@ def get_conversations():
         })
 
     return result
+
+
+# ─── Call Logs / Calling ──────────────────────────────────────────────────────
+
+ALLOWED_CALL_TYPES = {"Audio", "Video"}
+ACTIVE_CALL_STATUSES = {"Ringing", "Ongoing"}
+
+
+def _validate_call_type(call_type):
+    normalized = (call_type or "").strip().title()
+    if normalized not in ALLOWED_CALL_TYPES:
+        frappe.throw(_("Invalid call type."))
+    return normalized
+
+
+def _serialize_call_log(doc, current_user=None):
+    current_user = current_user or frappe.session.user
+    peer = doc.receiver if doc.caller == current_user else doc.caller
+    duration_seconds = 0
+
+    if doc.start_time and doc.end_time:
+        duration_seconds = max(int(time_diff_in_seconds(doc.end_time, doc.start_time)), 0)
+
+    return {
+        "name": doc.name,
+        "call_id": doc.call_id,
+        "caller": doc.caller,
+        "receiver": doc.receiver,
+        "peer": peer,
+        "call_type": doc.call_type,
+        "status": doc.status,
+        "start_time": str(doc.start_time) if doc.start_time else "",
+        "end_time": str(doc.end_time) if doc.end_time else "",
+        "duration": doc.duration or "",
+        "duration_seconds": duration_seconds,
+        "direction": "outgoing" if doc.caller == current_user else "incoming",
+    }
+
+
+def _publish_call_event(event_name, payload, *users):
+    for user in {u for u in users if u and u != "Guest"}:
+        frappe.publish_realtime(event_name, payload, user=user)
+
+
+def _get_call_log_for_user(call_id, user=None):
+    user = user or frappe.session.user
+    call_doc = frappe.get_doc("Call Log", call_id)
+    if user not in {call_doc.caller, call_doc.receiver}:
+        frappe.throw(_("You are not allowed to access this call."), frappe.PermissionError)
+    return call_doc
+
+
+def _save_call_log(call_doc):
+    call_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return call_doc
+
+
+@frappe.whitelist()
+def initiate_call(receiver, call_type, call_id=None):
+    caller = frappe.session.user
+    normalized_call_type = _validate_call_type(call_type)
+
+    if receiver == caller:
+        frappe.throw(_("You cannot call yourself."))
+
+    if not frappe.db.exists("User", receiver):
+        frappe.throw(_("Receiver does not exist."))
+
+    call_id = (call_id or frappe.generate_hash(length=14)).strip()
+
+    if frappe.db.exists("Call Log", call_id):
+        frappe.throw(_("Call ID already exists. Please retry."))
+
+    now = now_datetime()
+    call_doc = frappe.get_doc(
+        {
+            "doctype": "Call Log",
+            "call_id": call_id,
+            "caller": caller,
+            "receiver": receiver,
+            "call_type": normalized_call_type,
+            "status": "Ringing",
+            "start_time": now,
+        }
+    )
+    call_doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    payload = _serialize_call_log(call_doc, caller)
+    _publish_call_event("call_initiated", payload, receiver, caller)
+    return payload
+
+
+@frappe.whitelist()
+def accept_call(call_id):
+    call_doc = _get_call_log_for_user(call_id)
+    accepted_by = frappe.session.user
+
+    if call_doc.status not in ACTIVE_CALL_STATUSES:
+        frappe.throw(_("This call is no longer active."))
+
+    call_doc.status = "Ongoing"
+    call_doc.start_time = now_datetime()
+
+    _save_call_log(call_doc)
+
+    payload = _serialize_call_log(call_doc)
+    payload["accepted_by"] = accepted_by
+    _publish_call_event("call_accepted", payload, call_doc.caller, call_doc.receiver)
+    return payload
+
+
+@frappe.whitelist()
+def reject_call(call_id):
+    call_doc = _get_call_log_for_user(call_id)
+    rejected_by = frappe.session.user
+    call_doc.status = "Rejected"
+    call_doc.end_time = now_datetime()
+    call_doc.duration = "00:00"
+
+    _save_call_log(call_doc)
+
+    payload = _serialize_call_log(call_doc)
+    payload["rejected_by"] = rejected_by
+    _publish_call_event("call_rejected", payload, call_doc.caller, call_doc.receiver)
+    return payload
+
+
+@frappe.whitelist()
+def end_call(call_id):
+    call_doc = _get_call_log_for_user(call_id)
+    ended_by = frappe.session.user
+    now = now_datetime()
+
+    if call_doc.status == "Ringing":
+        call_doc.status = "Missed"
+        call_doc.duration = "00:00"
+    else:
+        call_doc.status = "Completed"
+        if call_doc.start_time:
+            seconds = max(int(time_diff_in_seconds(now, call_doc.start_time)), 0)
+            call_doc.duration = format_duration(seconds)
+
+    call_doc.end_time = now
+    _save_call_log(call_doc)
+
+    payload = _serialize_call_log(call_doc)
+    payload["ended_by"] = ended_by
+    _publish_call_event("call_ended", payload, call_doc.caller, call_doc.receiver)
+    return payload
+
+
+@frappe.whitelist()
+def timeout_call(call_id):
+    call_doc = _get_call_log_for_user(call_id)
+
+    if call_doc.status != "Ringing":
+        return _serialize_call_log(call_doc)
+
+    call_doc.status = "Missed"
+    call_doc.end_time = now_datetime()
+    call_doc.duration = "00:00"
+    _save_call_log(call_doc)
+
+    payload = _serialize_call_log(call_doc)
+    payload["reason"] = "timeout"
+    _publish_call_event("call_ended", payload, call_doc.caller, call_doc.receiver)
+    return payload
+
+
+@frappe.whitelist()
+def relay_call_signal(call_id, receiver, signal_type, payload=None):
+    call_doc = _get_call_log_for_user(call_id)
+    sender = frappe.session.user
+
+    if receiver not in {call_doc.caller, call_doc.receiver}:
+        frappe.throw(_("Receiver is not part of this call."))
+
+    if sender == receiver:
+        frappe.throw(_("Receiver must be the other participant."))
+
+    message = {
+        "call_id": call_id,
+        "from": sender,
+        "to": receiver,
+        "signal_type": signal_type,
+        "payload": payload or {},
+        "call_type": call_doc.call_type,
+    }
+    _publish_call_event("call_signal", message, receiver)
+    return {"ok": True}
+
+
+@frappe.whitelist()
+def get_call_logs(other_user=None, limit=10):
+    current_user = frappe.session.user
+    limit = max(min(frappe.utils.cint(limit or 10), 50), 1)
+
+    conditions = ["(caller = %(current_user)s OR receiver = %(current_user)s)"]
+    values = {"current_user": current_user, "limit": limit}
+
+    if other_user:
+        conditions.append("(caller = %(other_user)s OR receiver = %(other_user)s)")
+        values["other_user"] = other_user
+
+    where_clause = " AND ".join(conditions)
+
+    call_logs = frappe.db.sql(
+        f"""
+        SELECT name
+        FROM `tabCall Log`
+        WHERE {where_clause}
+        ORDER BY modified DESC
+        LIMIT %(limit)s
+        """,
+        values,
+        as_dict=True,
+    )
+
+    serialized = []
+    for row in call_logs:
+        serialized.append(_serialize_call_log(frappe.get_doc("Call Log", row.name), current_user))
+
+    summary_row = frappe.db.sql(
+        f"""
+        SELECT
+            COUNT(*) AS call_count,
+            SUM(
+                CASE
+                    WHEN status = 'Missed' AND receiver = %(current_user)s THEN 1
+                    ELSE 0
+                END
+            ) AS missed_calls
+        FROM `tabCall Log`
+        WHERE {where_clause}
+        """,
+        values,
+        as_dict=True,
+    )[0]
+
+    summary = {
+        "call_count": summary_row.call_count or 0,
+        "missed_calls": summary_row.missed_calls or 0,
+    }
+
+    return {"logs": serialized, "summary": summary}
