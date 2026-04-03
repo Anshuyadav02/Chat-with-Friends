@@ -3,12 +3,19 @@
     <Sidebar
       :call-logs="sidebarCallLogs"
       :call-summary="recentCallSummary"
+      :clearing-call-logs="clearingCallLogs"
       :current-user-email="session.user || ''"
       :current-user-initials="currentUserInitials"
       :current-user-name="currentUserName"
+      :deleting-call-id="deletingCallId"
+      :deleting-selected-call-logs="deletingSelectedCallLogsState"
       :expanded="sidebarExpanded"
+      @clear-logs="clearAllCallLogs"
+      @delete-log="deleteCallLog"
+      @delete-selected="deleteSelectedCallLogs"
       @logout="logout"
       @select-peer="focusPeer"
+      @call-peer="({ peer, type }) => { focusPeer(peer); startCall(resolveUser(peer), type).catch(console.error) }"
       @toggle="sidebarExpanded = !sidebarExpanded"
     />
 
@@ -18,16 +25,17 @@
         :class="selectedUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'"
       >
         <div class="flex items-center justify-between bg-green-600 px-4 py-3">
-          <div class="flex items-center gap-3">
+          
+          <!-- <div class="flex items-center gap-3">
             <div class="flex h-9 w-9 items-center justify-center rounded-full bg-white/30 text-sm font-bold text-white">
               {{ currentUserInitials }}
             </div>
             <span class="max-w-[120px] truncate text-sm font-semibold text-white">
               {{ currentUserName }}
-            </span>
-          </div>
-          <span class="rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
-            Chats
+            </span> 
+          </div> -->
+          <span class="max-w-[120px] truncate text-sm font-semibold text-white">
+              Chat With Friends
           </span>
         </div>
 
@@ -166,9 +174,54 @@
               >
                 <div
                   class="max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow sm:max-w-md"
-                  :class="msg.sender === session.user ? 'bg-green-500 text-white' : 'bg-white text-gray-800'"
+                  :class="messageBubbleClass(msg)"
                 >
-                  {{ msg.message }}
+                  <template v-if="msg.attachment">
+                    <img
+                      v-if="isImageMessage(msg)"
+                      :src="msg.attachment.file_url"
+                      :alt="msg.attachment.file_name || 'Image attachment'"
+                      class="max-h-72 w-full rounded-2xl object-cover"
+                    />
+                    <video
+                      v-else-if="isVideoMessage(msg)"
+                      :src="msg.attachment.file_url"
+                      controls
+                      preload="metadata"
+                      class="max-h-72 w-full rounded-2xl bg-black"
+                    ></video>
+                    <audio
+                      v-else-if="isAudioMessage(msg)"
+                      :src="msg.attachment.file_url"
+                      controls
+                      preload="metadata"
+                      class="w-full min-w-[220px]"
+                    ></audio>
+                    <a
+                      v-else
+                      :href="msg.attachment.file_url"
+                      :download="msg.attachment.file_name || 'attachment'"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="flex min-w-[220px] items-center gap-3 rounded-2xl border px-3 py-2 transition hover:opacity-90"
+                      :class="attachmentCardClass(msg)"
+                    >
+                      <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/10 text-lg font-semibold">
+                        {{ fileExtensionLabel(msg.attachment) }}
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <p class="truncate font-medium">{{ msg.attachment.file_name || 'Attachment' }}</p>
+                        <p class="text-xs" :class="attachmentMetaClass(msg)">
+                          {{ buildAttachmentPreviewLabel(msg.attachment) }}
+                          <span v-if="msg.attachment.file_size"> · {{ formatFileSize(msg.attachment.file_size) }}</span>
+                        </p>
+                      </div>
+                    </a>
+                  </template>
+
+                  <p v-if="msg.message" class="whitespace-pre-wrap break-words" :class="msg.attachment ? 'mt-2' : ''">
+                    {{ msg.message }}
+                  </p>
                 </div>
                 <div
                   class="mt-1 px-1 text-[10px]"
@@ -180,17 +233,64 @@
             </div>
           </div>
 
-          <div class="flex gap-2 border-t bg-white px-2 py-2 sm:px-4">
-            <textarea
-              v-model="newMessage"
-              rows="1"
-              placeholder="Type..."
-              class="flex-1 resize-none rounded-full border px-4 py-2 text-sm focus:ring-1 focus:ring-green-400"
-              @keydown.enter.exact.prevent="sendMessage"
-              @input="onTyping"
-              @blur="stopTyping"
-            />
-            <button class="h-10 w-10 rounded-full bg-green-500 text-white" @click="sendMessage">➤</button>
+          <div class="border-t bg-white px-2 py-2 sm:px-4">
+            <input ref="fileInputRef" type="file" class="hidden" @change="handleAttachmentSelection" />
+
+            <div v-if="uploadingAttachment || pendingAttachment" class="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
+              <div class="min-w-0">
+                <p class="truncate text-sm font-medium text-gray-700">
+                  {{ uploadingAttachment ? 'Uploading file...' : (pendingAttachment?.file_name || 'Attachment ready') }}
+                </p>
+                <p class="text-xs text-gray-500">
+                  {{ uploadingAttachment ? 'Please wait before sending' : buildPendingAttachmentMeta() }}
+                </p>
+              </div>
+
+              <button
+                v-if="pendingAttachment && !uploadingAttachment"
+                type="button"
+                class="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-rose-300 hover:text-rose-500"
+                @click="removePendingAttachment"
+              >
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!selectedUser || sending || uploadingAttachment"
+                @click="openAttachmentPicker"
+              >
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21.44 11.05 12.25 20a6 6 0 1 1-8.49-8.48l9.19-8.95a4 4 0 0 1 5.66 5.65l-9.2 8.95a2 2 0 1 1-2.82-2.83l8.49-8.24" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+
+              <textarea
+                v-model="newMessage"
+                rows="1"
+                placeholder="Type..."
+                class="flex-1 resize-none rounded-full border px-4 py-2 text-sm focus:ring-1 focus:ring-green-400"
+                @keydown.enter.exact.prevent="sendMessage"
+                @input="onTyping"
+                @blur="stopTyping"
+              />
+
+              <button
+                type="button"
+                class="flex h-10 w-10 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="!canSendMessage"
+                @click="sendMessage"
+              >
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                  <path d="M3.4 20.4 21 12 3.4 3.6 3.3 10l12.2 2-12.2 2 .1 6.4z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </template>
       </div>
@@ -207,6 +307,7 @@
         @reject="rejectIncomingCall"
         @toggle-mute="toggleMute"
         @toggle-speaker="toggleSpeaker"
+        @toggle-camera="toggleCamera"
       />
 
       <div
@@ -252,6 +353,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { createResource, frappeRequest } from 'frappe-ui'
+import { useToast } from 'vue-toastification'
 
 import CallUI from '@/Components/CallUI.vue'
 import VideoCallUI from '@/Components/VideoCallUI.vue'
@@ -259,6 +361,9 @@ import { useCallManager } from '@/composables/useCallManager'
 import { session } from '@/data/session'
 import { connectSocket } from '@/socket'
 import Sidebar from '../Components/sidebar.vue'
+
+// Connect socket early so useCallManager can register its listeners
+const socket = connectSocket()
 
 const SELECTED_USER_KEY = 'selectedUserName'
 
@@ -269,8 +374,12 @@ const messageGroups = ref([])
 const newMessage = ref('')
 const sending = ref(false)
 const loadingMessages = ref(false)
+const uploadingAttachment = ref(false)
 const messagesContainer = ref(null)
+const fileInputRef = ref(null)
 const lastMessageMap = ref({})
+const lastOutgoingDraft = ref(null)
+const pendingAttachment = ref(null)
 const typingUsers = ref({})
 const onlineUsers = ref([])
 const lastSeen = ref(JSON.parse(localStorage.getItem('lastSeen') || '{}'))
@@ -278,6 +387,10 @@ const selectedUserName = ref(localStorage.getItem(SELECTED_USER_KEY) || '')
 const recentCallLogs = ref([])
 const recentCallSummary = ref({ call_count: 0, missed_calls: 0 })
 const sidebarExpanded = ref(false)
+const deletingCallId = ref('')
+const deletingSelectedCallLogsState = ref(false)
+const clearingCallLogs = ref(false)
+const toast = useToast()
 
 const currentUserName = computed(() => {
   const user = allUsers.value.find(entry => entry.name === session.user)
@@ -287,6 +400,12 @@ const currentUserName = computed(() => {
 })
 
 const currentUserInitials = computed(() => initials(currentUserName.value))
+const canSendMessage = computed(
+  () => Boolean(selectedUser.value)
+    && !sending.value
+    && !uploadingAttachment.value
+    && Boolean(newMessage.value.trim() || pendingAttachment.value)
+)
 
 const unreadCount = computed(() => {
   const counts = {}
@@ -436,6 +555,149 @@ function formatDateLabel(value) {
   })
 }
 
+function guessAttachmentKind(attachment) {
+  const mimeType = (attachment?.mime_type || '').toLowerCase()
+  if (mimeType.startsWith('image/')) return 'image'
+  if (mimeType.startsWith('video/')) return 'video'
+  if (mimeType.startsWith('audio/')) return 'audio'
+  return attachment?.media_kind || 'file'
+}
+
+function normalizeAttachment(attachment) {
+  if (!attachment?.file_url) return null
+
+  return {
+    file_name: attachment.file_name || attachment.file_url.split('/').pop() || 'Attachment',
+    file_size: Number(attachment.file_size) || 0,
+    file_url: attachment.file_url,
+    media_kind: guessAttachmentKind(attachment),
+    mime_type: attachment.mime_type || '',
+  }
+}
+
+function buildAttachmentPreviewLabel(attachment) {
+  if (!attachment) return ''
+  if (attachment.media_kind === 'image') return 'Photo'
+  if (attachment.media_kind === 'video') return 'Video'
+  if (attachment.media_kind === 'audio') return 'Audio'
+  return attachment.file_name || 'File'
+}
+
+function formatFileSize(size) {
+  const bytes = Number(size) || 0
+  if (!bytes) return '0 B'
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${Math.round(bytes / 1024)} KB`
+  }
+  return `${bytes} B`
+}
+
+function formatMessagePreview(data) {
+  const attachment = normalizeAttachment(data?.attachment)
+  const text = typeof data?.message === 'string' ? data.message.trim() : ''
+  return text || buildAttachmentPreviewLabel(attachment)
+}
+
+function normalizeMessageData(data) {
+  const attachment = normalizeAttachment(data?.attachment)
+  const message = typeof data?.message === 'string' ? data.message : ''
+
+  return {
+    attachment,
+    message,
+    message_type: data?.message_type || (attachment ? (message ? 'mixed' : 'attachment') : 'text'),
+    preview_text: typeof data?.preview_text === 'string' && data.preview_text.trim()
+      ? data.preview_text
+      : formatMessagePreview({ attachment, message }),
+    sender: data?.sender || '',
+    timestamp: data?.timestamp || '',
+  }
+}
+
+function normalizeMessageGroups(groups) {
+  return (groups || []).map(group => ({
+    ...group,
+    messages: (group.messages || []).map(normalizeMessageData),
+  }))
+}
+
+function isOwnMessage(message) {
+  return message?.sender === session.user
+}
+
+function messageBubbleClass(message) {
+  return isOwnMessage(message) ? 'bg-green-500 text-white' : 'bg-white text-gray-800'
+}
+
+function attachmentCardClass(message) {
+  return isOwnMessage(message)
+    ? 'border-white/20 bg-white/10 text-white'
+    : 'border-gray-200 bg-gray-50 text-gray-800'
+}
+
+function attachmentMetaClass(message) {
+  return isOwnMessage(message) ? 'text-white/70' : 'text-gray-500'
+}
+
+function fileExtensionLabel(attachment) {
+  const extension = (attachment?.file_name || '').split('.').pop()
+  if (!extension || extension === attachment?.file_name) return 'FI'
+  return extension.slice(0, 2).toUpperCase()
+}
+
+function isImageMessage(message) {
+  return message?.attachment?.media_kind === 'image'
+}
+
+function isVideoMessage(message) {
+  return message?.attachment?.media_kind === 'video'
+}
+
+function isAudioMessage(message) {
+  return message?.attachment?.media_kind === 'audio'
+}
+
+function buildPendingAttachmentMeta() {
+  if (!pendingAttachment.value) return ''
+  const previewLabel = buildAttachmentPreviewLabel(pendingAttachment.value)
+  const fileSize = pendingAttachment.value.file_size ? ` · ${formatFileSize(pendingAttachment.value.file_size)}` : ''
+  return `${previewLabel}${fileSize}`
+}
+
+function extractErrorMessage(error, fallback) {
+  if (typeof error?.message === 'string' && error.message.trim()) {
+    return error.message
+  }
+
+  if (Array.isArray(error?.messages) && error.messages.length) {
+    return error.messages[0]
+  }
+
+  if (typeof error?._server_messages === 'string') {
+    try {
+      const serverMessages = JSON.parse(error._server_messages)
+      const firstMessage = serverMessages[0]
+      if (typeof firstMessage === 'string') {
+        try {
+          const parsedMessage = JSON.parse(firstMessage)
+          if (typeof parsedMessage?.message === 'string' && parsedMessage.message.trim()) {
+            return parsedMessage.message
+          }
+        } catch {
+          if (firstMessage.trim()) return firstMessage
+        }
+      }
+    } catch {
+      // no-op
+    }
+  }
+
+  return fallback
+}
+
 async function refreshSidebarCallLogs() {
   try {
     const response = await frappeRequest({
@@ -447,6 +709,154 @@ async function refreshSidebarCallLogs() {
     recentCallSummary.value = response.summary || { call_count: 0, missed_calls: 0 }
   } catch (error) {
     console.error('[chat] failed to refresh sidebar call logs', error)
+  }
+}
+
+async function deleteCallLog(callId) {
+  if (!callId || deletingCallId.value || clearingCallLogs.value || deletingSelectedCallLogsState.value) return
+
+  if (!window.confirm('Delete this call log?')) return
+
+  deletingCallId.value = callId
+
+  try {
+    await frappeRequest({
+      url: 'fun.api.delete_call_log',
+      params: { call_id: callId },
+    })
+
+    await refreshSidebarCallLogs()
+    if (selectedUser.value?.name) {
+      await refreshCallLogs(selectedUser.value.name).catch(() => null)
+    }
+    toast.success('Call log deleted')
+  } catch (error) {
+    console.error('[chat] failed to delete call log', error)
+    toast.error(extractErrorMessage(error, 'Unable to delete call log'))
+  } finally {
+    deletingCallId.value = ''
+  }
+}
+
+async function deleteSelectedCallLogs(callIds) {
+  const normalizedCallIds = Array.isArray(callIds)
+    ? [...new Set(callIds.filter(Boolean))]
+    : []
+
+  if (!normalizedCallIds.length || deletingSelectedCallLogsState.value || clearingCallLogs.value || deletingCallId.value) {
+    return
+  }
+
+  const confirmationMessage = normalizedCallIds.length === 1
+    ? 'Delete 1 selected call log?'
+    : `Delete ${normalizedCallIds.length} selected call logs?`
+
+  if (!window.confirm(confirmationMessage)) return
+
+  deletingSelectedCallLogsState.value = true
+
+  try {
+    let deletedCount = 0
+    let skippedActiveCount = 0
+    let failedCount = 0
+    let lastError = null
+
+    for (const callId of normalizedCallIds) {
+      try {
+        await frappeRequest({
+          url: 'fun.api.delete_call_log',
+          params: { call_id: callId },
+        })
+        deletedCount += 1
+      } catch (error) {
+        const message = extractErrorMessage(error, '')
+        if (/active calls cannot be deleted/i.test(message)) {
+          skippedActiveCount += 1
+        } else {
+          failedCount += 1
+          lastError = error
+        }
+      }
+    }
+
+    await refreshSidebarCallLogs()
+    if (selectedUser.value?.name) {
+      await refreshCallLogs(selectedUser.value.name).catch(() => null)
+    }
+
+    if (deletedCount) {
+      toast.success(
+        deletedCount === 1
+          ? '1 call log deleted'
+          : `${deletedCount} call logs deleted`
+      )
+    } else {
+      toast.info('No call logs were deleted')
+    }
+
+    if (skippedActiveCount) {
+      toast.info(
+        skippedActiveCount === 1
+          ? '1 active call log was skipped'
+          : `${skippedActiveCount} active call logs were skipped`
+      )
+    }
+
+    if (failedCount) {
+      toast.error(
+        failedCount === 1
+          ? extractErrorMessage(lastError, '1 call log could not be deleted')
+          : `${failedCount} call logs could not be deleted`
+      )
+    }
+  } catch (error) {
+    console.error('[chat] failed to delete selected call logs', error)
+    toast.error(extractErrorMessage(error, 'Unable to delete selected call logs'))
+  } finally {
+    deletingSelectedCallLogsState.value = false
+  }
+}
+
+async function clearAllCallLogs() {
+  if (!recentCallLogs.value.length || clearingCallLogs.value || deletingCallId.value || deletingSelectedCallLogsState.value) return
+
+  if (!window.confirm('Delete all call logs?')) return
+
+  clearingCallLogs.value = true
+
+  try {
+    const response = await frappeRequest({
+      url: 'fun.api.clear_call_logs',
+      params: {},
+    })
+
+    await refreshSidebarCallLogs()
+    if (selectedUser.value?.name) {
+      await refreshCallLogs(selectedUser.value.name).catch(() => null)
+    }
+
+    if (response?.deleted_count) {
+      toast.success(
+        response.deleted_count === 1
+          ? '1 call log deleted'
+          : `${response.deleted_count} call logs deleted`
+      )
+    } else {
+      toast.info('No call logs were deleted')
+    }
+
+    if (response?.skipped_active_count) {
+      toast.info(
+        response.skipped_active_count === 1
+          ? '1 active call log was skipped'
+          : `${response.skipped_active_count} active call logs were skipped`
+      )
+    }
+  } catch (error) {
+    console.error('[chat] failed to clear call logs', error)
+    toast.error(extractErrorMessage(error, 'Unable to clear call logs'))
+  } finally {
+    clearingCallLogs.value = false
   }
 }
 
@@ -484,7 +894,7 @@ createResource({
 const messagesResource = createResource({
   url: 'fun.api.get_messages',
   onSuccess(data) {
-    messageGroups.value = data || []
+    messageGroups.value = normalizeMessageGroups(data || [])
     loadingMessages.value = false
     scrollToBottom()
   },
@@ -497,33 +907,38 @@ const messagesResource = createResource({
 const sendResource = createResource({
   url: 'fun.api.send_message',
   onSuccess(data) {
-    appendMessage(data)
+    const normalizedMessage = normalizeMessageData(data)
+    appendMessage(normalizedMessage, data)
     sending.value = false
+    lastOutgoingDraft.value = null
     const peer = data.receiver === session.user ? data.sender : data.receiver
     lastMessageMap.value = {
       ...lastMessageMap.value,
-      [peer]: { last_message: data.message, timestamp: data.timestamp },
+      [peer]: { last_message: normalizedMessage.preview_text, timestamp: data.timestamp },
     }
   },
-  onError() {
+  onError(error) {
     sending.value = false
+    if (lastOutgoingDraft.value) {
+      newMessage.value = lastOutgoingDraft.value.message
+      pendingAttachment.value = lastOutgoingDraft.value.attachment
+      lastOutgoingDraft.value = null
+    }
+    toast.error(extractErrorMessage(error, 'Unable to send message'))
   },
 })
 
-function appendMessage(data) {
+function appendMessage(data, source = data) {
   const groups = JSON.parse(JSON.stringify(messageGroups.value))
   const lastGroup = groups[groups.length - 1]
-  const nextMessage = {
-    sender: data.sender,
-    message: data.message,
-    timestamp: data.timestamp,
-  }
+  const nextMessage = normalizeMessageData(data)
 
-  if (lastGroup && lastGroup.conversation_name === data.conversation_name) {
+  if (lastGroup && lastGroup.conversation_name === source.conversation_name) {
     const alreadyPresent = lastGroup.messages.some(
       message =>
         message.sender === nextMessage.sender &&
         message.message === nextMessage.message &&
+        JSON.stringify(message.attachment || null) === JSON.stringify(nextMessage.attachment || null) &&
         message.timestamp === nextMessage.timestamp
     )
 
@@ -539,8 +954,8 @@ function appendMessage(data) {
     ]
   } else {
     groups.push({
-      conversation_name: data.conversation_name,
-      start_date: data.start_date,
+      conversation_name: source.conversation_name,
+      start_date: source.start_date,
       messages: [nextMessage],
     })
   }
@@ -590,17 +1005,86 @@ function selectUser(user) {
   focusPeer(user.name)
 }
 
+async function uploadChatFile(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch('/api/method/fun.api.upload_chat_file', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'X-Frappe-CSRF-Token': window.csrf_token || '',
+      'X-Requested-With': 'XMLHttpRequest',
+    },
+    credentials: 'include',
+    body: formData,
+  })
+
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw payload
+  }
+
+  return normalizeAttachment(payload.message || payload)
+}
+
+function openAttachmentPicker() {
+  if (!selectedUser.value || sending.value || uploadingAttachment.value) return
+  fileInputRef.value?.click()
+}
+
+function removePendingAttachment() {
+  pendingAttachment.value = null
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+async function handleAttachmentSelection(event) {
+  const selectedFile = event.target?.files?.[0]
+  if (!selectedFile) return
+
+  uploadingAttachment.value = true
+
+  try {
+    pendingAttachment.value = await uploadChatFile(selectedFile)
+  } catch (error) {
+    console.error('[chat] failed to upload attachment', error)
+    toast.error(extractErrorMessage(error, 'Unable to upload file'))
+  } finally {
+    uploadingAttachment.value = false
+    if (event.target) {
+      event.target.value = ''
+    }
+  }
+}
+
 function sendMessage() {
   const text = newMessage.value.trim()
-  if (!text || sending.value || !selectedUser.value) return
+  const attachment = pendingAttachment.value ? { ...pendingAttachment.value } : null
+
+  if ((!text && !attachment) || sending.value || uploadingAttachment.value || !selectedUser.value) return
+
   sending.value = true
+  lastOutgoingDraft.value = {
+    attachment,
+    message: newMessage.value,
+  }
   newMessage.value = ''
+  pendingAttachment.value = null
   stopTyping()
-  sendResource.submit({ receiver: selectedUser.value.name, message: text })
+
+  const payload = {
+    receiver: selectedUser.value.name,
+    message: text,
+  }
+  if (attachment) {
+    payload.attachment = JSON.stringify(attachment)
+  }
+  sendResource.submit(payload)
 }
 
 let typingTimeout = null
-let socket = null
 const onTypingEvent = data => {
   typingUsers.value = { ...typingUsers.value, [data.from]: true }
 }
@@ -630,20 +1114,33 @@ function stopTyping() {
 }
 
 async function handleIncomingMessage(data) {
+  if (!data?.sender) {
+    return
+  }
+  const normalizedMessage = normalizeMessageData(data)
   const peer = data.sender === session.user ? data.receiver : data.sender
   lastMessageMap.value = {
     ...lastMessageMap.value,
-    [peer]: { last_message: data.message, timestamp: data.timestamp },
+    [peer]: { last_message: normalizedMessage.preview_text, timestamp: data.timestamp },
   }
 
-  if (!selectedUser.value) return
-  if (peer !== selectedUser.value.name) return
+  if (!selectedUser.value) {
+    return
+  }
+  if (peer !== selectedUser.value.name) {
+    return
+  }
 
   messagesResource.submit({ other_user: peer })
 }
 
 function handleRealtimeEnvelope(data) {
   if (!data?.event) return
+
+  if (data.event === 'new_message') {
+    handleIncomingMessage(data.message)
+    return
+  }
 
   if (data.event === 'typing') {
     onTypingEvent(data.data)
@@ -714,7 +1211,6 @@ watch(
 
 onMounted(() => {
   refreshSidebarCallLogs().catch(() => null)
-  socket = connectSocket()
   if (!socket) return
 
   socket.on('new_message', handleIncomingMessage)

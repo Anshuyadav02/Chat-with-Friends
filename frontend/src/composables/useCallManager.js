@@ -504,8 +504,44 @@ export function useCallManager(options = {}) {
   }
 
   async function toggleCamera() {
-    if (!activeCall.value || activeCall.value.callType !== 'video') return
+    if (!activeCall.value) return
 
+    // Audio call → upgrade to video by adding camera track
+    if (activeCall.value.callType !== 'video') {
+      try {
+        const cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false,
+        })
+        const videoTrack = cameraStream.getVideoTracks()[0]
+
+        if (peerConnection.value) {
+          peerConnection.value.addTrack(videoTrack, localStream.value)
+          // Renegotiate so the remote peer gets the video track
+          const offer = await peerConnection.value.createOffer()
+          await peerConnection.value.setLocalDescription(offer)
+          await request('relay_call_signal', {
+            call_id: activeCall.value.callId,
+            receiver: activeCall.value.remoteUser,
+            signal_type: 'offer',
+            payload: { offer },
+          })
+        }
+
+        // Merge video track into local stream
+        const audioTracks = localStream.value?.getAudioTracks() || []
+        localStream.value = new MediaStream([...audioTracks, videoTrack])
+
+        // Upgrade call type so VideoCallUI renders
+        activeCall.value = { ...activeCall.value, callType: 'video' }
+        mediaState.value = { ...mediaState.value, cameraOn: true }
+      } catch (err) {
+        console.error('[call] camera upgrade failed', err)
+      }
+      return
+    }
+
+    // Already a video call — toggle camera on/off
     const videoTrack = localStream.value?.getVideoTracks?.()[0]
     if (!videoTrack) {
       const cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
@@ -601,6 +637,11 @@ export function useCallManager(options = {}) {
 
     if (message.event === 'call_ended') {
       onCallEnded()
+      return
+    }
+
+    if (['call_log_deleted', 'call_logs_cleared'].includes(message.event)) {
+      options.onCallStateChange?.()
       return
     }
 

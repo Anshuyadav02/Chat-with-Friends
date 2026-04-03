@@ -68,11 +68,11 @@ export function initSocket() {
 	})
 
 	socket.on('connect', () => {
-		console.debug('[socket] connected', { id: socket.id, siteName, url })
+		console.log('[socket] ✅ connected', { id: socket.id, siteName, url })
 	})
 
 	socket.on('connect_error', (error) => {
-		console.error('[socket] connect_error', error)
+		console.error('[socket] ❌ connect_error', error)
 	})
 
 	socket.on('disconnect', (reason) => {
@@ -81,7 +81,7 @@ export function initSocket() {
 
 	socket.onAny((event, ...args) => {
 		if (event === 'realtime') return
-		console.debug('[socket] incoming', event, ...args)
+		console.log('[socket] incoming event:', event, ...args)
 	})
 
 	return socket
