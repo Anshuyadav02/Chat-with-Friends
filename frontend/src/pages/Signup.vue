@@ -11,22 +11,22 @@
     />
 
     <!-- 💬 Floating Chat Bubbles -->
-    <div class="absolute top-20 left-10 bg-white px-4 py-2 rounded-xl shadow animate-bounce">
+    <div class="hidden sm:block absolute top-20 left-10 bg-white px-4 py-2 rounded-xl shadow animate-bounce">
       Hello 👋
     </div>
-    <div class="absolute bottom-20 right-10 bg-green-500 text-white px-4 py-2 rounded-xl shadow animate-pulse">
+    <div class="hidden sm:block absolute bottom-20 right-10 bg-green-500 text-white px-4 py-2 rounded-xl shadow animate-pulse">
       Join Us 🚀
     </div>
 
     <!-- 🔥 Glass Card -->
-    <Card class="relative z-10 w-full max-w-md p-8 rounded-3xl shadow-2xl bg-white/80 backdrop-blur-xl border border-white/40">
+    <Card class="relative z-10 w-full max-w-md mx-4 p-5 sm:p-8 rounded-3xl shadow-2xl bg-white/80 backdrop-blur-xl border border-white/40">
 
       <!-- Logo -->
       <div class="flex flex-col items-center mb-6">
         <div class="bg-gradient-to-r from-green-500 to-emerald-500 text-white w-16 h-16 flex items-center justify-center rounded-full text-3xl shadow-lg">
           💬
         </div>
-        <h2 class="text-3xl font-bold mt-4 text-gray-800">Create Account</h2>
+        <h2 class="text-2xl sm:text-3xl font-bold mt-4 text-gray-800">Create Account</h2>
         <p class="text-gray-500 text-sm">Sign up and start chatting today</p>
       </div>
 

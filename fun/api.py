@@ -105,23 +105,58 @@ def _normalize_chat_attachment(attachment):
     }
 
 
-def _serialize_chat_message_value(message=None, attachment=None):
+def _normalize_chat_message_meta(metadata=None):
+    parsed_meta = frappe.parse_json(metadata) if isinstance(metadata, str) else metadata
+    if not parsed_meta:
+        return {}
+
+    if not isinstance(parsed_meta, dict):
+        frappe.throw(_("Invalid message metadata."))
+
+    deleted_for = []
+    for user in parsed_meta.get("deleted_for") or []:
+        normalized_user = str(user or "").strip()
+        if normalized_user and normalized_user not in deleted_for:
+            deleted_for.append(normalized_user)
+
+    normalized = {}
+    if deleted_for:
+        normalized["deleted_for"] = deleted_for
+    if parsed_meta.get("deleted_for_everyone"):
+        normalized["deleted_for_everyone"] = True
+    if parsed_meta.get("forwarded"):
+        normalized["forwarded"] = True
+
+    edited_at = str(parsed_meta.get("edited_at") or "").strip()
+    if edited_at:
+        normalized["edited_at"] = edited_at
+
+    return normalized
+
+
+def _serialize_chat_message_value(message=None, attachment=None, metadata=None, force_structured=False):
     normalized_message = str(message or "").strip()
     normalized_attachment = _normalize_chat_attachment(attachment)
+    normalized_metadata = _normalize_chat_message_meta(metadata)
 
-    if normalized_attachment:
-        return json.dumps(
-            {
-                "attachment": normalized_attachment,
-                "schema": CHAT_MESSAGE_SCHEMA,
-                "text": normalized_message,
-            }
-        )
+    if normalized_attachment or normalized_metadata or force_structured:
+        payload = {
+            "schema": CHAT_MESSAGE_SCHEMA,
+            "text": normalized_message,
+        }
+        if normalized_attachment:
+            payload["attachment"] = normalized_attachment
+        if normalized_metadata:
+            payload["meta"] = normalized_metadata
+        return json.dumps(payload)
 
     return normalized_message
 
 
-def _build_chat_preview_text(message=None, attachment=None):
+def _build_chat_preview_text(message=None, attachment=None, deleted_for_everyone=False):
+    if deleted_for_everyone:
+        return _("Message deleted")
+
     normalized_message = str(message or "").strip()
     if normalized_message:
         return normalized_message
@@ -142,6 +177,7 @@ def _parse_chat_message_content(raw_message):
     raw_text = raw_message if isinstance(raw_message, str) else str(raw_message or "")
     message_text = raw_text
     attachment = None
+    metadata = {}
 
     if raw_text:
         try:
@@ -152,9 +188,13 @@ def _parse_chat_message_content(raw_message):
         if isinstance(parsed_message, dict) and parsed_message.get("schema") == CHAT_MESSAGE_SCHEMA:
             message_text = str(parsed_message.get("text") or "").strip()
             attachment = _normalize_chat_attachment(parsed_message.get("attachment"))
+            metadata = _normalize_chat_message_meta(parsed_message.get("meta"))
 
-    preview_text = _build_chat_preview_text(message_text, attachment)
-    if attachment and message_text:
+    deleted_for_everyone = bool(metadata.get("deleted_for_everyone"))
+    preview_text = _build_chat_preview_text(message_text, attachment, deleted_for_everyone=deleted_for_everyone)
+    if deleted_for_everyone:
+        message_type = "deleted"
+    elif attachment and message_text:
         message_type = "mixed"
     elif attachment:
         message_type = "attachment"
@@ -162,66 +202,98 @@ def _parse_chat_message_content(raw_message):
         message_type = "text"
 
     return {
-        "attachment": attachment,
-        "message": message_text,
+        "attachment": None if deleted_for_everyone else attachment,
+        "deleted_for": metadata.get("deleted_for") or [],
+        "deleted_for_everyone": deleted_for_everyone,
+        "edited_at": metadata.get("edited_at") or "",
+        "forwarded": bool(metadata.get("forwarded")),
+        "message": "" if deleted_for_everyone else message_text,
         "message_type": message_type,
+        "meta": metadata,
         "preview_text": preview_text,
     }
 
 
-def _build_chat_message_payload(conversation, sender, receiver, message, timestamp):
-    parsed_content = _parse_chat_message_content(message)
+def _is_chat_message_visible_to_user(parsed_content, user):
+    return user not in set(parsed_content.get("deleted_for") or [])
+
+
+def _build_chat_message_payload(conversation, row):
+    parsed_content = _parse_chat_message_content(row.message)
+    receiver = conversation.user_1 if row.sender == conversation.user_2 else conversation.user_2
+
     return {
         "attachment": parsed_content["attachment"],
         "conversation_name": conversation.name,
+        "deleted_for_everyone": parsed_content["deleted_for_everyone"],
+        "edited": bool(parsed_content["edited_at"]),
+        "edited_at": parsed_content["edited_at"],
+        "forwarded": parsed_content["forwarded"],
+        "id": row.name,
         "message": parsed_content["message"],
         "message_type": parsed_content["message_type"],
         "preview_text": parsed_content["preview_text"],
         "receiver": receiver,
-        "sender": sender,
+        "sender": row.sender,
         "start_date": str(conversation.start_date),
-        "timestamp": str(timestamp),
+        "timestamp": str(row.timestamp) if row.timestamp else "",
     }
 
 
-@frappe.whitelist()
-def upload_chat_file():
-    uploaded_file = frappe.request.files.get("file")
-    if not uploaded_file:
-        frappe.throw(_("Please choose a file to upload."))
+def _get_chat_message_context(message_id):
+    current_user = frappe.session.user
+    message_name = str(message_id or "").strip()
+    if not message_name:
+        frappe.throw(_("Message is required."))
 
-    file_name = getattr(uploaded_file, "filename", None) or getattr(uploaded_file, "name", None) or "attachment"
-    content = uploaded_file.stream.read() if getattr(uploaded_file, "stream", None) else uploaded_file.read()
-    if not content:
-        frappe.throw(_("Uploaded file is empty."))
+    message_entry = frappe.db.get_value("Chat Message", message_name, ["parent"], as_dict=True)
+    if not message_entry:
+        frappe.throw(_("Message not found."))
 
-    file_doc = save_file(file_name, content, None, None, is_private=0)
-    mime_type = getattr(uploaded_file, "content_type", None) or mimetypes.guess_type(file_doc.file_name or file_name)[0] or ""
+    conversation = frappe.get_doc("Conversation", message_entry.parent)
+    participants = {conversation.user_1, conversation.user_2}
+    if current_user not in participants:
+        frappe.throw(_("You are not allowed to update this message."))
 
-    return {
-        "file_name": file_doc.file_name,
-        "file_size": file_doc.file_size,
-        "file_url": file_doc.file_url,
-        "media_kind": _guess_attachment_kind(file_doc.file_name, mime_type),
-        "mime_type": mime_type,
-    }
+    row = next((entry for entry in conversation.messages if entry.name == message_name), None)
+    if not row:
+        frappe.throw(_("Message not found."))
 
-@frappe.whitelist()
-def send_message(receiver, message=None, attachment=None):
-    sender = frappe.session.user
+    return conversation, row, participants
+
+
+def _publish_chat_message_update(conversation, row, participants):
+    payload = _build_chat_message_payload(conversation, row)
+
+    for participant in participants:
+        frappe.publish_realtime(
+            "realtime",
+            {
+                "data": payload,
+                "event": "chat_message_updated",
+            },
+            user=participant,
+        )
+
+    return payload
+
+
+def _store_chat_message(sender, receiver, message=None, attachment=None, metadata=None):
     now = now_datetime()
     today = now.date()
-    stored_message = _serialize_chat_message_value(message=message, attachment=attachment)
+    stored_message = _serialize_chat_message_value(
+        message=message,
+        attachment=attachment,
+        metadata=metadata,
+    )
     parsed_content = _parse_chat_message_content(stored_message)
 
     if not parsed_content["message"] and not parsed_content["attachment"]:
         frappe.throw(_("Message or attachment is required."))
 
-    # Always store user_1/user_2 in sorted order for consistent lookup
     u1, u2 = sorted([sender, receiver])
     cutoff = add_days(today, -2)
 
-    # Find an active conversation between these two users (last active within 2 days)
     existing = frappe.db.sql("""
         SELECT name FROM `tabConversation`
         WHERE user_1 = %(u1)s AND user_2 = %(u2)s
@@ -255,13 +327,41 @@ def send_message(receiver, message=None, attachment=None):
 
     frappe.db.commit()
 
-    payload = _build_chat_message_payload(conv, sender, receiver, stored_message, now)
+    row = conv.messages[-1]
+    payload = _build_chat_message_payload(conv, row)
 
-    # Notify both sender and receiver via realtime
     frappe.publish_realtime("new_message", payload, user=receiver)
     frappe.publish_realtime("new_message", payload, user=sender)
 
     return payload
+
+
+@frappe.whitelist()
+def upload_chat_file():
+    uploaded_file = frappe.request.files.get("file")
+    if not uploaded_file:
+        frappe.throw(_("Please choose a file to upload."))
+
+    file_name = getattr(uploaded_file, "filename", None) or getattr(uploaded_file, "name", None) or "attachment"
+    content = uploaded_file.stream.read() if getattr(uploaded_file, "stream", None) else uploaded_file.read()
+    if not content:
+        frappe.throw(_("Uploaded file is empty."))
+
+    file_doc = save_file(file_name, content, None, None, is_private=0)
+    mime_type = getattr(uploaded_file, "content_type", None) or mimetypes.guess_type(file_doc.file_name or file_name)[0] or ""
+
+    return {
+        "file_name": file_doc.file_name,
+        "file_size": file_doc.file_size,
+        "file_url": file_doc.file_url,
+        "media_kind": _guess_attachment_kind(file_doc.file_name, mime_type),
+        "mime_type": mime_type,
+    }
+
+@frappe.whitelist()
+def send_message(receiver, message=None, attachment=None):
+    sender = frappe.session.user
+    return _store_chat_message(sender, receiver, message=message, attachment=attachment)
 
 
 # ─── Get Messages ─────────────────────────────────────────────────────────────
@@ -284,16 +384,13 @@ def get_messages(other_user):
         messages = []
         for msg in doc.messages:
             parsed_content = _parse_chat_message_content(msg.message)
-            messages.append({
-                "attachment": parsed_content["attachment"],
-                "sender": msg.sender,
-                "message": parsed_content["message"],
-                "message_type": parsed_content["message_type"],
-                "preview_text": parsed_content["preview_text"],
-                "timestamp": str(msg.timestamp) if msg.timestamp else "",
-            })
+            if not _is_chat_message_visible_to_user(parsed_content, current_user):
+                continue
+            messages.append(_build_chat_message_payload(doc, msg))
         # Sort messages by timestamp ascending
         messages.sort(key=lambda m: m["timestamp"])
+        if not messages:
+            continue
         result.append({
             "conversation_name": conv.name,
             "start_date": str(conv.start_date),
@@ -327,30 +424,148 @@ def get_conversations():
             continue
         seen_peers.add(peer)
 
-        # Get last message in this conversation
-        last_msg = frappe.db.sql("""
-            SELECT sender, message, timestamp
-            FROM `tabChat Message`
-            WHERE parent = %(conv)s
-            ORDER BY timestamp DESC
-            LIMIT 1
-        """, {"conv": conv.name}, as_dict=True)
+        doc = frappe.get_doc("Conversation", conv.name)
+        visible_messages = []
+        for msg in doc.messages:
+            parsed_content = _parse_chat_message_content(msg.message)
+            if not _is_chat_message_visible_to_user(parsed_content, current_user):
+                continue
+            visible_messages.append(_build_chat_message_payload(doc, msg))
+        visible_messages.sort(key=lambda row: row["timestamp"], reverse=True)
+        last_msg = visible_messages[0] if visible_messages else None
 
         user_info = frappe.db.get_value(
             "User", peer, ["full_name", "first_name", "user_image"], as_dict=True
         ) or {}
 
-        parsed_last_message = _parse_chat_message_content(last_msg[0].message) if last_msg else None
-
         result.append({
             "peer": peer,
             "full_name": user_info.get("full_name") or user_info.get("first_name") or peer,
             "user_image": user_info.get("user_image"),
-            "last_message": parsed_last_message["preview_text"] if parsed_last_message else "",
-            "timestamp": str(last_msg[0].timestamp) if last_msg else "",
+            "last_message": last_msg["preview_text"] if last_msg else "",
+            "timestamp": last_msg["timestamp"] if last_msg else "",
         })
 
     return result
+
+
+@frappe.whitelist()
+def edit_message(message_id, message=None):
+    current_user = frappe.session.user
+    conversation, row, participants = _get_chat_message_context(message_id)
+
+    if row.sender != current_user:
+        frappe.throw(_("Only your own messages can be edited."))
+
+    parsed_content = _parse_chat_message_content(row.message)
+    if parsed_content["deleted_for_everyone"]:
+        frappe.throw(_("Deleted messages cannot be edited."))
+
+    next_message = str(message or "").strip()
+    if not next_message and not parsed_content["attachment"]:
+        frappe.throw(_("Message cannot be empty."))
+
+    metadata = {
+        **parsed_content["meta"],
+        "edited_at": str(now_datetime()),
+    }
+    row.message = _serialize_chat_message_value(
+        message=next_message,
+        attachment=parsed_content["attachment"],
+        metadata=metadata,
+        force_structured=True,
+    )
+
+    conversation.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return _publish_chat_message_update(conversation, row, participants)
+
+
+@frappe.whitelist()
+def delete_message_for_me(message_id):
+    current_user = frappe.session.user
+    conversation, row, _participants = _get_chat_message_context(message_id)
+    parsed_content = _parse_chat_message_content(row.message)
+
+    deleted_for = list(parsed_content["meta"].get("deleted_for") or [])
+    if current_user not in deleted_for:
+        deleted_for.append(current_user)
+
+    metadata = {
+        **parsed_content["meta"],
+        "deleted_for": deleted_for,
+    }
+    row.message = _serialize_chat_message_value(
+        message=parsed_content["message"],
+        attachment=parsed_content["attachment"],
+        metadata=metadata,
+        force_structured=True,
+    )
+
+    conversation.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return {
+        "message_id": row.name,
+        "status": "ok",
+    }
+
+
+@frappe.whitelist()
+def delete_message_for_everyone(message_id):
+    current_user = frappe.session.user
+    conversation, row, participants = _get_chat_message_context(message_id)
+
+    if row.sender != current_user:
+        frappe.throw(_("Only your own messages can be deleted for everyone."))
+
+    parsed_content = _parse_chat_message_content(row.message)
+    metadata = {
+        **parsed_content["meta"],
+        "deleted_for_everyone": True,
+    }
+    row.message = _serialize_chat_message_value(
+        message="",
+        attachment=None,
+        metadata=metadata,
+        force_structured=True,
+    )
+
+    conversation.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    return _publish_chat_message_update(conversation, row, participants)
+
+
+@frappe.whitelist()
+def forward_message(message_id, receiver):
+    current_user = frappe.session.user
+    conversation, row, _participants = _get_chat_message_context(message_id)
+    parsed_content = _parse_chat_message_content(row.message)
+
+    if not _is_chat_message_visible_to_user(parsed_content, current_user):
+        frappe.throw(_("This message is no longer available."))
+    if parsed_content["deleted_for_everyone"]:
+        frappe.throw(_("Deleted messages cannot be forwarded."))
+
+    normalized_receiver = str(receiver or "").strip()
+    if not normalized_receiver:
+        frappe.throw(_("Please choose a user to forward this message to."))
+
+    if normalized_receiver == "Guest":
+        frappe.throw(_("Invalid recipient."))
+
+    if not frappe.db.exists("User", normalized_receiver):
+        frappe.throw(_("Recipient not found."))
+
+    return _store_chat_message(
+        current_user,
+        normalized_receiver,
+        message=parsed_content["message"],
+        attachment=parsed_content["attachment"],
+        metadata={"forwarded": True},
+    )
 
 
 # ─── Call Logs / Calling ──────────────────────────────────────────────────────

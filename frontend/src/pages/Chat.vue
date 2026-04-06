@@ -10,6 +10,7 @@
       :deleting-call-id="deletingCallId"
       :deleting-selected-call-logs="deletingSelectedCallLogsState"
       :expanded="sidebarExpanded"
+      :chat-open="!!selectedUser"
       @clear-logs="clearAllCallLogs"
       @delete-log="deleteCallLog"
       @delete-selected="deleteSelectedCallLogs"
@@ -19,9 +20,10 @@
       @toggle="sidebarExpanded = !sidebarExpanded"
     />
 
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden md:pb-0" :class="selectedUser ? 'pb-0' : 'pb-16'">
       <div
-        class="fixed z-20 flex h-full w-72 transform flex-col border-r border-gray-200 bg-white transition-transform duration-300 sm:w-80 md:relative md:translate-x-0"
+        class="fixed z-20 flex w-full sm:w-72 transform flex-col border-r border-gray-200 bg-white transition-transform duration-300 md:w-80 md:relative md:translate-x-0 md:h-full"
+        :style="{ height: selectedUser ? '100dvh' : 'calc(100dvh - 4rem)' }"
         :class="selectedUser ? '-translate-x-full md:translate-x-0' : 'translate-x-0'"
       >
         <div class="flex items-center justify-between bg-green-600 px-4 py-3">
@@ -168,66 +170,206 @@
 
               <div
                 v-for="(msg, index) in group.messages"
-                :key="`${group.conversation_name}-${index}`"
+                :key="msg.id || `${group.conversation_name}-${index}`"
                 class="mb-3 flex flex-col"
-                :class="msg.sender === session.user ? 'items-end' : 'items-start'"
+                :class="isOwnMessage(msg) ? 'items-end' : 'items-start'"
               >
-                <div
-                  class="max-w-[80%] rounded-2xl px-3 py-2 text-sm shadow sm:max-w-md"
-                  :class="messageBubbleClass(msg)"
-                >
-                  <template v-if="msg.attachment">
-                    <img
-                      v-if="isImageMessage(msg)"
-                      :src="msg.attachment.file_url"
-                      :alt="msg.attachment.file_name || 'Image attachment'"
-                      class="max-h-72 w-full rounded-2xl object-cover"
-                    />
-                    <video
-                      v-else-if="isVideoMessage(msg)"
-                      :src="msg.attachment.file_url"
-                      controls
-                      preload="metadata"
-                      class="max-h-72 w-full rounded-2xl bg-black"
-                    ></video>
-                    <audio
-                      v-else-if="isAudioMessage(msg)"
-                      :src="msg.attachment.file_url"
-                      controls
-                      preload="metadata"
-                      class="w-full min-w-[220px]"
-                    ></audio>
-                    <a
-                      v-else
-                      :href="msg.attachment.file_url"
-                      :download="msg.attachment.file_name || 'attachment'"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="flex min-w-[220px] items-center gap-3 rounded-2xl border px-3 py-2 transition hover:opacity-90"
-                      :class="attachmentCardClass(msg)"
-                    >
-                      <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/10 text-lg font-semibold">
-                        {{ fileExtensionLabel(msg.attachment) }}
-                      </div>
-                      <div class="min-w-0 flex-1">
-                        <p class="truncate font-medium">{{ msg.attachment.file_name || 'Attachment' }}</p>
-                        <p class="text-xs" :class="attachmentMetaClass(msg)">
-                          {{ buildAttachmentPreviewLabel(msg.attachment) }}
-                          <span v-if="msg.attachment.file_size"> · {{ formatFileSize(msg.attachment.file_size) }}</span>
-                        </p>
-                      </div>
-                    </a>
-                  </template>
+                <div class="group relative w-full max-w-[85%] sm:max-w-md">
+                  <button
+                    v-if="msg.id"
+                    type="button"
+                    class="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition"
+                    :class="[
+                      activeMessageMenuId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+                      isOwnMessage(msg)
+                        ? 'border-white/20 bg-white/10 text-white backdrop-blur hover:bg-white/20'
+                        : 'border-gray-200 bg-white/90 text-gray-500 shadow-sm hover:bg-gray-50',
+                    ]"
+                    @click.stop="toggleMessageMenu(msg.id)"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                      <circle cx="5" cy="12" r="1.7" />
+                      <circle cx="12" cy="12" r="1.7" />
+                      <circle cx="19" cy="12" r="1.7" />
+                    </svg>
+                  </button>
 
-                  <p v-if="msg.message" class="whitespace-pre-wrap break-words" :class="msg.attachment ? 'mt-2' : ''">
-                    {{ msg.message }}
-                  </p>
+                  <div
+                    class="relative overflow-hidden rounded-[26px] px-3 py-2 pr-12 text-sm shadow"
+                    :class="messageBubbleClass(msg)"
+                  >
+                    <p
+                      v-if="msg.forwarded && !msg.deleted_for_everyone"
+                      class="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em]"
+                      :class="isOwnMessage(msg) ? 'text-white/70' : 'text-gray-400'"
+                    >
+                      Forwarded
+                    </p>
+
+                    <template v-if="msg.deleted_for_everyone">
+                      <div class="flex items-center gap-2 text-sm italic">
+                        <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M6 12h12" stroke-linecap="round" />
+                          <path d="M9 7h6m-6 10h6" stroke-linecap="round" opacity=".55" />
+                        </svg>
+                        <span>{{ deletedMessageLabel(msg) }}</span>
+                      </div>
+                    </template>
+
+                    <template v-else>
+                      <template v-if="msg.attachment">
+                        <img
+                          v-if="isImageMessage(msg)"
+                          :src="msg.attachment.file_url"
+                          :alt="msg.attachment.file_name || 'Image attachment'"
+                          class="max-h-72 w-full rounded-2xl object-cover"
+                        />
+                        <video
+                          v-else-if="isVideoMessage(msg)"
+                          :src="msg.attachment.file_url"
+                          controls
+                          preload="metadata"
+                          class="max-h-72 w-full rounded-2xl bg-black"
+                        ></video>
+                        <audio
+                          v-else-if="isAudioMessage(msg)"
+                          :src="msg.attachment.file_url"
+                          controls
+                          preload="metadata"
+                          class="w-full min-w-[220px]"
+                        ></audio>
+                        <a
+                          v-else
+                          :href="msg.attachment.file_url"
+                          :download="msg.attachment.file_name || 'attachment'"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="flex min-w-[220px] items-center gap-3 rounded-2xl border px-3 py-2 transition hover:opacity-90"
+                          :class="attachmentCardClass(msg)"
+                        >
+                          <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/10 text-lg font-semibold">
+                            {{ fileExtensionLabel(msg.attachment) }}
+                          </div>
+                          <div class="min-w-0 flex-1">
+                            <p class="truncate font-medium">{{ msg.attachment.file_name || 'Attachment' }}</p>
+                            <p class="text-xs" :class="attachmentMetaClass(msg)">
+                              {{ buildAttachmentPreviewLabel(msg.attachment) }}
+                              <span v-if="msg.attachment.file_size"> · {{ formatFileSize(msg.attachment.file_size) }}</span>
+                            </p>
+                          </div>
+                        </a>
+                      </template>
+
+                      <div
+                        v-if="msg.attachment && showsInlineAttachmentActions(msg)"
+                        class="mt-2 flex items-center justify-between gap-3 text-[11px]"
+                        :class="attachmentMetaClass(msg)"
+                      >
+                        <span class="min-w-0 truncate">
+                          {{ msg.attachment.file_name || buildAttachmentPreviewLabel(msg.attachment) }}
+                        </span>
+                        <button
+                          type="button"
+                          class="shrink-0 rounded-full border px-2.5 py-1 font-medium transition"
+                          :class="isOwnMessage(msg) ? 'border-white/25 text-white hover:bg-white/10' : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
+                          @click.stop="downloadAttachment(msg.attachment)"
+                        >
+                          Download
+                        </button>
+                      </div>
+
+                      <div v-if="editingMessageId === msg.id" class="mt-2 space-y-2">
+                        <textarea
+                          v-model="editingMessageText"
+                          rows="3"
+                          class="w-full resize-none rounded-2xl border border-black/10 bg-white/90 px-3 py-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-green-400"
+                          placeholder="Update your message"
+                          @keydown.esc.prevent="cancelEditingMessage"
+                          @keydown.ctrl.enter.prevent="saveEditedMessage(msg)"
+                        />
+                        <div class="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            class="rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:bg-black/5"
+                            @click="cancelEditingMessage"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-full bg-green-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="isMessageActionBusy(msg.id) || (!editingMessageText.trim() && !msg.attachment)"
+                            @click="saveEditedMessage(msg)"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+
+                      <p v-else-if="msg.message" class="whitespace-pre-wrap break-words" :class="msg.attachment ? 'mt-2' : ''">
+                        {{ msg.message }}
+                      </p>
+                    </template>
+                  </div>
+
+                  <div
+                    v-if="activeMessageMenuId === msg.id"
+                    class="absolute top-12 z-30 w-56 overflow-hidden rounded-2xl border border-gray-200 bg-white/95 p-1 shadow-2xl backdrop-blur"
+                    :class="isOwnMessage(msg) ? 'right-0' : 'left-0'"
+                    @click.stop
+                  >
+                    <button
+                      v-if="canEditMessage(msg)"
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100"
+                      @click="startEditingMessage(msg)"
+                    >
+                      <span class="text-base">✏️</span>
+                      <span>Edit message</span>
+                    </button>
+                    <button
+                      v-if="canForwardMessage(msg)"
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100"
+                      @click="openForwardModal(msg)"
+                    >
+                      <span class="text-base">↗</span>
+                      <span>Forward</span>
+                    </button>
+                    <button
+                      v-if="canDownloadAttachment(msg)"
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100"
+                      @click="downloadAttachment(msg.attachment)"
+                    >
+                      <span class="text-base">⤓</span>
+                      <span>Download</span>
+                    </button>
+                    <button
+                      v-if="canDeleteForMe(msg)"
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                      @click="deleteMessageForMeAction(msg)"
+                    >
+                      <span class="text-base">🗑</span>
+                      <span>Delete for me</span>
+                    </button>
+                    <button
+                      v-if="canDeleteForEveryone(msg)"
+                      type="button"
+                      class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50"
+                      @click="deleteMessageForEveryoneAction(msg)"
+                    >
+                      <span class="text-base">⛔</span>
+                      <span>Delete for everyone</span>
+                    </button>
+                  </div>
                 </div>
                 <div
                   class="mt-1 px-1 text-[10px]"
-                  :class="msg.sender === session.user ? 'text-right text-gray-500' : 'text-left text-gray-500'"
+                  :class="isOwnMessage(msg) ? 'text-right text-gray-500' : 'text-left text-gray-500'"
                 >
-                  {{ formatTime(msg.timestamp) }}
+                  {{ formatTime(msg.timestamp) }}<span v-if="msg.edited"> · edited</span>
                 </div>
               </div>
             </div>
@@ -312,7 +454,7 @@
 
       <div
         v-if="incomingCall && !activeCall"
-        class="fixed right-4 top-4 z-50 w-[340px] rounded-3xl border border-emerald-200 bg-white p-4 shadow-2xl"
+        class="fixed right-4 top-4 z-50 w-[calc(100vw-2rem)] max-w-[340px] rounded-3xl border border-emerald-200 bg-white p-4 shadow-2xl"
       >
         <p class="text-xs font-semibold uppercase tracking-[0.22em] text-green-600">Incoming Call</p>
         <p class="mt-2 text-lg font-semibold text-gray-900">{{ incomingCall.remoteName }}</p>
@@ -346,6 +488,74 @@
         @toggle-screen-share="toggleScreenShare"
         @toggle-speaker="toggleSpeaker"
       />
+
+      <div
+        v-if="forwardingMessage"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-4 backdrop-blur-sm"
+        @click="closeForwardModal"
+      >
+        <div class="w-full max-w-md rounded-[28px] bg-white p-5 shadow-2xl" @click.stop>
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-green-600">Forward Message</p>
+              <p class="mt-1 text-sm text-gray-500">Choose who should receive this message.</p>
+            </div>
+            <button
+              type="button"
+              class="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-500 transition hover:border-rose-300 hover:text-rose-500"
+              :disabled="forwardingState"
+              @click="closeForwardModal"
+            >
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
+            <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">Preview</p>
+            <p class="mt-2 text-sm text-gray-700">{{ forwardMessagePreview(forwardingMessage) }}</p>
+          </div>
+
+          <input
+            v-model="forwardSearch"
+            type="text"
+            placeholder="Search user"
+            class="mt-4 w-full rounded-2xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-400"
+          />
+
+          <div class="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+            <button
+              v-for="user in forwardTargets"
+              :key="user.name"
+              type="button"
+              class="flex w-full items-center gap-3 rounded-2xl border border-gray-200 px-3 py-3 text-left transition hover:border-green-300 hover:bg-green-50 disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="forwardingState"
+              @click="forwardSelectedMessage(user)"
+            >
+              <div
+                class="flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
+                :style="{ background: avatarColor(user.name) }"
+              >
+                {{ initials(user.full_name || user.first_name || user.name) }}
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-medium text-gray-800">
+                  {{ user.full_name || user.first_name || user.name }}
+                </p>
+                <p class="truncate text-xs text-gray-400">{{ user.name }}</p>
+              </div>
+              <span class="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                Send
+              </span>
+            </button>
+
+            <div v-if="!forwardTargets.length" class="rounded-2xl border border-dashed border-gray-200 px-4 py-5 text-center text-sm text-gray-400">
+              No matching users found.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -380,6 +590,13 @@ const fileInputRef = ref(null)
 const lastMessageMap = ref({})
 const lastOutgoingDraft = ref(null)
 const pendingAttachment = ref(null)
+const activeMessageMenuId = ref('')
+const editingMessageId = ref('')
+const editingMessageText = ref('')
+const forwardingMessage = ref(null)
+const forwardingState = ref(false)
+const forwardSearch = ref('')
+const messageActionBusyId = ref('')
 const typingUsers = ref({})
 const onlineUsers = ref([])
 const lastSeen = ref(JSON.parse(localStorage.getItem('lastSeen') || '{}'))
@@ -454,6 +671,24 @@ const sidebarCallLogs = computed(() =>
     }
   })
 )
+
+const forwardTargets = computed(() => {
+  const query = forwardSearch.value.toLowerCase().trim()
+
+  return allUsers.value
+    .filter(user => {
+      if (!user?.name || user.name === session.user) return false
+      if (!query) return true
+      return [user.full_name, user.first_name, user.name]
+        .filter(Boolean)
+        .some(value => value.toLowerCase().includes(query))
+    })
+    .sort((left, right) => {
+      const leftLabel = (left.full_name || left.first_name || left.name || '').toLowerCase()
+      const rightLabel = (right.full_name || right.first_name || right.name || '').toLowerCase()
+      return leftLabel.localeCompare(rightLabel)
+    })
+})
 
 function resolveUser(userId) {
   return (
@@ -607,6 +842,11 @@ function normalizeMessageData(data) {
 
   return {
     attachment,
+    deleted_for_everyone: Boolean(data?.deleted_for_everyone),
+    edited: Boolean(data?.edited),
+    edited_at: data?.edited_at || '',
+    forwarded: Boolean(data?.forwarded),
+    id: data?.id || '',
     message,
     message_type: data?.message_type || (attachment ? (message ? 'mixed' : 'attachment') : 'text'),
     preview_text: typeof data?.preview_text === 'string' && data.preview_text.trim()
@@ -629,6 +869,11 @@ function isOwnMessage(message) {
 }
 
 function messageBubbleClass(message) {
+  if (message?.deleted_for_everyone) {
+    return isOwnMessage(message)
+      ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
+      : 'border border-gray-200 bg-white/95 text-gray-500'
+  }
   return isOwnMessage(message) ? 'bg-green-500 text-white' : 'bg-white text-gray-800'
 }
 
@@ -658,6 +903,93 @@ function isVideoMessage(message) {
 
 function isAudioMessage(message) {
   return message?.attachment?.media_kind === 'audio'
+}
+
+function showsInlineAttachmentActions(message) {
+  return Boolean(message?.attachment) && (isImageMessage(message) || isVideoMessage(message) || isAudioMessage(message))
+}
+
+function deletedMessageLabel(message) {
+  return isOwnMessage(message) ? 'You deleted this message' : 'This message was deleted'
+}
+
+function canEditMessage(message) {
+  return Boolean(message?.id) && isOwnMessage(message) && !message?.deleted_for_everyone
+}
+
+function canDeleteForMe(message) {
+  return Boolean(message?.id)
+}
+
+function canDeleteForEveryone(message) {
+  return Boolean(message?.id) && isOwnMessage(message) && !message?.deleted_for_everyone
+}
+
+function canForwardMessage(message) {
+  return Boolean(message?.id) && !message?.deleted_for_everyone
+}
+
+function canDownloadAttachment(message) {
+  return Boolean(message?.attachment?.file_url) && !message?.deleted_for_everyone
+}
+
+function isMessageActionBusy(messageId) {
+  return messageActionBusyId.value === messageId
+}
+
+function toggleMessageMenu(messageId) {
+  if (!messageId) return
+  activeMessageMenuId.value = activeMessageMenuId.value === messageId ? '' : messageId
+}
+
+function closeMessageMenu() {
+  activeMessageMenuId.value = ''
+}
+
+function startEditingMessage(message) {
+  if (!canEditMessage(message)) return
+  editingMessageId.value = message.id
+  editingMessageText.value = message.message || ''
+  closeMessageMenu()
+}
+
+function cancelEditingMessage() {
+  editingMessageId.value = ''
+  editingMessageText.value = ''
+}
+
+function openForwardModal(message) {
+  if (!canForwardMessage(message)) return
+  forwardingMessage.value = {
+    ...message,
+    attachment: message.attachment ? { ...message.attachment } : null,
+  }
+  forwardSearch.value = ''
+  closeMessageMenu()
+}
+
+function closeForwardModal(force = false) {
+  if (forwardingState.value && !force) return
+  forwardingMessage.value = null
+  forwardSearch.value = ''
+}
+
+function resetMessageUiState() {
+  closeMessageMenu()
+  cancelEditingMessage()
+  closeForwardModal(true)
+}
+
+function forwardMessagePreview(message) {
+  if (!message) return ''
+  if (message.deleted_for_everyone) return 'Deleted message'
+
+  const attachmentLabel = buildAttachmentPreviewLabel(message.attachment)
+  if (message.message && attachmentLabel) {
+    return `${attachmentLabel} · ${message.message}`
+  }
+
+  return message.message || attachmentLabel || 'Message'
 }
 
 function buildPendingAttachmentMeta() {
@@ -710,6 +1042,30 @@ async function refreshSidebarCallLogs() {
   } catch (error) {
     console.error('[chat] failed to refresh sidebar call logs', error)
   }
+}
+
+async function refreshConversationPreviews() {
+  try {
+    const conversations = await frappeRequest({
+      url: 'fun.api.get_conversations',
+    })
+
+    const nextMap = {}
+    for (const conversation of conversations || []) {
+      nextMap[conversation.peer] = {
+        last_message: conversation.last_message,
+        timestamp: conversation.timestamp,
+      }
+    }
+    lastMessageMap.value = nextMap
+  } catch (error) {
+    console.error('[chat] failed to refresh conversation previews', error)
+  }
+}
+
+function refreshCurrentChat() {
+  if (!selectedUser.value?.name) return
+  messagesResource.submit({ other_user: selectedUser.value.name })
 }
 
 async function deleteCallLog(callId) {
@@ -935,11 +1291,14 @@ function appendMessage(data, source = data) {
 
   if (lastGroup && lastGroup.conversation_name === source.conversation_name) {
     const alreadyPresent = lastGroup.messages.some(
-      message =>
-        message.sender === nextMessage.sender &&
-        message.message === nextMessage.message &&
-        JSON.stringify(message.attachment || null) === JSON.stringify(nextMessage.attachment || null) &&
-        message.timestamp === nextMessage.timestamp
+      message => (
+        (message.id && nextMessage.id && message.id === nextMessage.id) || (
+          message.sender === nextMessage.sender &&
+          message.message === nextMessage.message &&
+          JSON.stringify(message.attachment || null) === JSON.stringify(nextMessage.attachment || null) &&
+          message.timestamp === nextMessage.timestamp
+        )
+      )
     )
 
     if (alreadyPresent) {
@@ -1059,6 +1418,134 @@ async function handleAttachmentSelection(event) {
   }
 }
 
+function downloadAttachment(attachment) {
+  if (!attachment?.file_url) return
+
+  const link = document.createElement('a')
+  link.href = attachment.file_url
+  link.download = attachment.file_name || 'attachment'
+  link.rel = 'noopener noreferrer'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
+
+async function saveEditedMessage(message) {
+  if (!canEditMessage(message) || isMessageActionBusy(message.id)) return
+
+  const nextMessage = editingMessageText.value.trim()
+  if (!nextMessage && !message.attachment) {
+    toast.error('Message cannot be empty')
+    return
+  }
+
+  messageActionBusyId.value = message.id
+
+  try {
+    await frappeRequest({
+      url: 'fun.api.edit_message',
+      params: {
+        message: nextMessage,
+        message_id: message.id,
+      },
+    })
+
+    cancelEditingMessage()
+    closeMessageMenu()
+    refreshCurrentChat()
+    await refreshConversationPreviews()
+    toast.success('Message updated')
+  } catch (error) {
+    console.error('[chat] failed to edit message', error)
+    toast.error(extractErrorMessage(error, 'Unable to edit message'))
+  } finally {
+    messageActionBusyId.value = ''
+  }
+}
+
+async function deleteMessageForMeAction(message) {
+  if (!canDeleteForMe(message) || isMessageActionBusy(message.id)) return
+  closeMessageMenu()
+
+  if (!window.confirm('Delete this message only for you?')) return
+
+  messageActionBusyId.value = message.id
+
+  try {
+    if (editingMessageId.value === message.id) {
+      cancelEditingMessage()
+    }
+
+    await frappeRequest({
+      url: 'fun.api.delete_message_for_me',
+      params: { message_id: message.id },
+    })
+
+    refreshCurrentChat()
+    await refreshConversationPreviews()
+    toast.success('Message deleted for you')
+  } catch (error) {
+    console.error('[chat] failed to delete message for me', error)
+    toast.error(extractErrorMessage(error, 'Unable to delete message'))
+  } finally {
+    messageActionBusyId.value = ''
+  }
+}
+
+async function deleteMessageForEveryoneAction(message) {
+  if (!canDeleteForEveryone(message) || isMessageActionBusy(message.id)) return
+  closeMessageMenu()
+
+  if (!window.confirm('Delete this message for everyone?')) return
+
+  messageActionBusyId.value = message.id
+
+  try {
+    if (editingMessageId.value === message.id) {
+      cancelEditingMessage()
+    }
+
+    await frappeRequest({
+      url: 'fun.api.delete_message_for_everyone',
+      params: { message_id: message.id },
+    })
+
+    refreshCurrentChat()
+    await refreshConversationPreviews()
+    toast.success('Message deleted for everyone')
+  } catch (error) {
+    console.error('[chat] failed to delete message for everyone', error)
+    toast.error(extractErrorMessage(error, 'Unable to delete message'))
+  } finally {
+    messageActionBusyId.value = ''
+  }
+}
+
+async function forwardSelectedMessage(user) {
+  if (!forwardingMessage.value?.id || !user?.name || forwardingState.value) return
+
+  forwardingState.value = true
+
+  try {
+    await frappeRequest({
+      url: 'fun.api.forward_message',
+      params: {
+        message_id: forwardingMessage.value.id,
+        receiver: user.name,
+      },
+    })
+
+    closeForwardModal(true)
+    await refreshConversationPreviews()
+    toast.success(`Message forwarded to ${user.full_name || user.first_name || user.name}`)
+  } catch (error) {
+    console.error('[chat] failed to forward message', error)
+    toast.error(extractErrorMessage(error, 'Unable to forward message'))
+  } finally {
+    forwardingState.value = false
+  }
+}
+
 function sendMessage() {
   const text = newMessage.value.trim()
   const attachment = pendingAttachment.value ? { ...pendingAttachment.value } : null
@@ -1085,6 +1572,21 @@ function sendMessage() {
 }
 
 let typingTimeout = null
+function handleWindowClick() {
+  closeMessageMenu()
+}
+
+function handleWindowKeydown(event) {
+  if (event.key !== 'Escape') return
+
+  closeMessageMenu()
+  if (editingMessageId.value) {
+    cancelEditingMessage()
+  } else if (forwardingMessage.value) {
+    closeForwardModal()
+  }
+}
+
 const onTypingEvent = data => {
   typingUsers.value = { ...typingUsers.value, [data.from]: true }
 }
@@ -1134,8 +1636,23 @@ async function handleIncomingMessage(data) {
   messagesResource.submit({ other_user: peer })
 }
 
+function handleChatMessageUpdated(data) {
+  if (!data?.sender) return
+
+  const peer = data.sender === session.user ? data.receiver : data.sender
+  if (selectedUser.value?.name === peer) {
+    refreshCurrentChat()
+  }
+  refreshConversationPreviews().catch(() => null)
+}
+
 function handleRealtimeEnvelope(data) {
   if (!data?.event) return
+
+  if (data.event === 'chat_message_updated') {
+    handleChatMessageUpdated(data.data)
+    return
+  }
 
   if (data.event === 'new_message') {
     handleIncomingMessage(data.message)
@@ -1169,6 +1686,7 @@ function logout() {
 watch(
   () => selectedUser.value?.name,
   userName => {
+    resetMessageUiState()
     if (userName) {
       loadSelectedChat(userName)
     } else {
@@ -1211,6 +1729,8 @@ watch(
 
 onMounted(() => {
   refreshSidebarCallLogs().catch(() => null)
+  window.addEventListener('click', handleWindowClick)
+  window.addEventListener('keydown', handleWindowKeydown)
   if (!socket) return
 
   socket.on('new_message', handleIncomingMessage)
@@ -1222,6 +1742,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('click', handleWindowClick)
+  window.removeEventListener('keydown', handleWindowKeydown)
   if (socket) {
     socket.off('new_message', handleIncomingMessage)
     socket.off('realtime', handleRealtimeEnvelope)

@@ -1,23 +1,13 @@
 <template>
+  <!-- ════ DESKTOP SIDEBAR (md+) ════ -->
   <aside
-    class="wa-sidebar relative z-30 flex h-screen shrink-0 overflow-visible transition-[width] duration-300 ease-in-out"
+    class="wa-sidebar relative z-30 hidden md:flex h-screen shrink-0 overflow-visible transition-[width] duration-300 ease-in-out"
     :class="expanded ? 'w-[340px]' : 'w-[60px]'"
   >
     <!-- ── Icon Rail ─────────────────────────────────────────────── -->
     <div class="wa-rail flex w-[60px] shrink-0 flex-col items-between justify-between py-3">
 
       <div class="flex flex-col items-center gap-1 pt-1">
-        <!-- User avatar (top) -->
-        <!-- <button
-          type="button"
-          class="wa-avatar-top mb-3 flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white"
-          :style="{ background: avatarBg }"
-          @click="openPanel('profile')"
-          title="Profile"
-        >
-          {{ currentUserInitials }}
-        </button> -->
-
         <!-- Chats -->
         <RailIcon :active="activeView === 'chats'" label="Chats" @click="openPanel('chats')">
           <svg viewBox="0 0 24 24" class="h-[22px] w-[22px]" fill="currentColor">
@@ -40,7 +30,7 @@
         </RailIcon>
       </div>
 
-      <!-- Bottom: settings -->
+      <!-- Bottom: profile avatar -->
       <div ref="profileMenuRef" class="relative flex justify-center">
         <transition
           enter-active-class="transition duration-150 ease-out"
@@ -56,7 +46,6 @@
             @click.stop
           >
             <p class="wa-profile-popup-title">Profile</p>
-
             <div class="wa-profile-popup-card mt-3 flex items-center gap-3 rounded-2xl px-3 py-3">
               <div
                 class="flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white"
@@ -69,7 +58,6 @@
                 <p class="truncate text-xs" style="color:#8696a0">{{ currentUserEmail }}</p>
               </div>
             </div>
-
             <button
               type="button"
               class="wa-logout-btn mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition"
@@ -100,21 +88,17 @@
       class="wa-panel flex min-w-0 flex-1 flex-col overflow-hidden transition-opacity duration-200"
       :class="expanded ? 'opacity-100' : 'pointer-events-none opacity-0'"
     >
-
       <!-- ══ CALLS PANEL ══ -->
       <template v-if="activeView === 'calls'">
-
         <!-- Header -->
         <div class="wa-panel-header flex items-center justify-between px-4 py-3">
           <h2 class="text-[19px] font-semibold wa-title">Calls</h2>
           <div class="flex items-center gap-1">
-            <!-- search toggle -->
             <button type="button" class="wa-icon-btn" title="Search" @click="searchOpen = !searchOpen">
               <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
                 <path d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
               </svg>
             </button>
-            <!-- overflow menu -->
             <div ref="callMenuRef" class="relative">
               <button
                 type="button"
@@ -127,7 +111,6 @@
                   <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
                 </svg>
               </button>
-
               <transition
                 enter-active-class="transition duration-150 ease-out"
                 enter-from-class="translate-y-1 opacity-0"
@@ -160,7 +143,7 @@
           </div>
         </div>
 
-        <!-- Search bar (toggleable) -->
+        <!-- Search bar -->
         <div v-if="searchOpen" class="wa-search-wrap px-3 pb-2">
           <div class="wa-search-bar flex items-center gap-2 rounded-lg px-3 py-2">
             <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 wa-search-icon" fill="currentColor">
@@ -191,9 +174,7 @@
           <div class="wa-stat-card missed flex items-center gap-2.5 rounded-xl px-3 py-2.5">
             <div class="wa-stat-icon-wrap missed flex h-8 w-8 items-center justify-center rounded-full">
               <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
-                <path d="m23.71 16.67-3.5-3.5a1 1 0 0 0-1.42 0l-1.73 1.73a13.8 13.8 0 0 1-2.58-1.63L19 8.76 15.24 5 5 15.24 8.76 19l3.33-3.33c.5.93 1.07 1.8 1.73 2.58L12.09 20a1 1 0 0 0 0 1.42l3.5 3.5a1 1 0 0 0 1.41 0L23.7 18.1a1 1 0 0 0 .01-1.43z" opacity=".3"/>
-                <path d="M4.59 5.66 3.17 4.24a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.42 1.42c-.13.29-.18.61-.12.95l1.16 6.18c.18.97 1.02 1.68 2.01 1.68h.63l1.32 1.32C7.59 17.62 7.3 18 7.3 18.5c0 .83.67 1.5 1.5 1.5.62 0 1.15-.37 1.38-.9l.98.98c-.63 1.01-.61 2.36.22 3.24L14.5 26l2.12-2.12-3.11-3.11a.48.48 0 0 1 0-.68l6.39-6.39L18.54 12l-6.37 6.37-1.3-1.3h.63c.83 0 1.5-.67 1.5-1.5 0-.38-.15-.72-.38-.98l-1.11-1.11.95-2.52L11.5 10l-2.97 2.97L7.4 11.84V11.8l-.02-.12L6.1 5.95a.47.47 0 0 1 .12-.38L4.59 5.66z" opacity=".3"/>
-                <path d="M20.3 5.71C18.17 3.57 15.31 2.5 12.45 2.5c-.8 0-1.6.08-2.38.25L11.5 4.18c.32-.05.64-.08.96-.08 2.39 0 4.77.91 6.6 2.74l1.24-1.13zm-15.6 0L3.46 4.47C2.53 5.5 2 6.85 2 8.32v.18h2v-.18c0-1 .27-1.93.7-2.61zm-.1 5.79H2.6l.72 3.84c.18.97 1.02 1.68 2.01 1.68H6l-1.4-5.52z"/>
+                <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
               </svg>
             </div>
             <div>
@@ -220,49 +201,31 @@
               <span>Select all</span>
               <span class="wa-selected-count">{{ selectedCount }} selected</span>
             </button>
-
             <div class="flex items-center gap-2">
               <button
                 v-if="selectedCount"
                 type="button"
                 class="wa-header-delete-btn flex h-8 w-8 items-center justify-center rounded-full"
                 :disabled="callLogActionDisabled"
-                title="Delete selected call logs"
                 @click.stop="deleteSelectedCallLogs"
               >
-                <svg
-                  v-if="deletingSelectedCallLogs"
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4 animate-spin"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg v-if="deletingSelectedCallLogs" viewBox="0 0 24 24" class="h-4 w-4 animate-spin" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M21 12a9 9 0 1 1-6.2-8.56" stroke-linecap="round" />
                 </svg>
-                <svg
-                  v-else
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
+                <svg v-else viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M3 6h18" stroke-linecap="round" />
                   <path d="M8 6V4h8v2" stroke-linecap="round" stroke-linejoin="round" />
                   <path d="M19 6l-1 14H6L5 6" stroke-linecap="round" stroke-linejoin="round" />
                   <path d="M10 11v6M14 11v6" stroke-linecap="round" />
                 </svg>
               </button>
-
-              <button type="button" class="wa-icon-btn" title="Close selection" @click.stop="exitDeleteSelection">
+              <button type="button" class="wa-icon-btn" @click.stop="exitDeleteSelection">
                 <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" />
                 </svg>
               </button>
             </div>
           </template>
-
           <template v-else>
             <span>Recent</span>
             <span class="wa-section-count">{{ filteredLogs.length }}</span>
@@ -290,50 +253,30 @@
                   </svg>
                 </span>
               </div>
-
-              <!-- Avatar -->
               <div
                 class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
                 :style="{ background: avatarColor(log.peer) }"
               >
                 {{ initials(log.peer_name || log.peer) }}
               </div>
-
-              <!-- Info -->
               <div class="min-w-0 flex-1">
-                <p
-                  class="truncate text-[15px] font-medium wa-call-name"
-                  :class="isMissedCall(log) ? 'wa-missed-text' : ''"
-                >
+                <p class="truncate text-[15px] font-medium wa-call-name" :class="isMissedCall(log) ? 'wa-missed-text' : ''">
                   {{ log.peer_name || log.peer }}
                 </p>
                 <div class="mt-0.5 flex items-center gap-1">
-                  <!-- direction arrow icon -->
-                  <svg
-                    viewBox="0 0 24 24"
-                    class="h-3.5 w-3.5 shrink-0"
-                    :class="directionIconClass(log)"
-                    fill="currentColor"
-                  >
+                  <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" :class="directionIconClass(log)" fill="currentColor">
                     <path v-if="log.direction === 'outgoing'" d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/>
                     <path v-else d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/>
                   </svg>
-                  <span class="text-xs wa-call-meta" :class="isMissedCall(log) ? 'wa-missed-text' : ''">
-                    {{ callTypeLabel(log) }}
-                  </span>
+                  <span class="text-xs wa-call-meta" :class="isMissedCall(log) ? 'wa-missed-text' : ''">{{ callTypeLabel(log) }}</span>
                   <span class="text-xs wa-call-meta">· {{ formatTime(log.start_time || log.end_time) }}</span>
-                  <span v-if="log.duration && log.status === 'Completed'" class="text-xs wa-call-meta">
-                    · {{ log.duration }}
-                  </span>
+                  <span v-if="log.duration && log.status === 'Completed'" class="text-xs wa-call-meta">· {{ log.duration }}</span>
                 </div>
               </div>
-
-              <!-- Call-back icon -->
               <div v-if="!selectingCallLogs" class="flex items-center gap-1">
                 <span
                   class="wa-cb-btn flex h-8 w-8 items-center justify-center rounded-full"
                   :class="log.call_type === 'Video' ? 'wa-cb-video' : 'wa-cb-audio'"
-                  :title="log.call_type === 'Video' ? 'Video call' : 'Voice call'"
                   @click.stop="emit('call-peer', { peer: log.peer, type: log.call_type === 'Video' ? 'video' : 'audio' })"
                 >
                   <svg v-if="log.call_type === 'Video'" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
@@ -344,12 +287,9 @@
                   </svg>
                 </span>
               </div>
-
-              <!-- bottom divider -->
               <div class="wa-row-divider absolute bottom-0 left-[64px] right-0 h-px"></div>
             </button>
           </template>
-
           <div v-else class="flex flex-col items-center justify-center py-16 text-center">
             <div class="wa-empty-icon mb-4 flex h-16 w-16 items-center justify-center rounded-full">
               <svg viewBox="0 0 24 24" class="h-7 w-7" fill="currentColor" style="color:#8696a0">
@@ -361,9 +301,361 @@
           </div>
         </div>
       </template>
-
     </div>
   </aside>
+
+  <!-- ════ MOBILE BOTTOM NAV + PANEL (< md) ════ -->
+  <div v-if="!chatOpen" class="md:hidden">
+
+    <!-- Slide-up Panel Overlay -->
+    <transition
+      enter-active-class="transition duration-250 ease-out"
+      enter-from-class="translate-y-full"
+      enter-to-class="translate-y-0"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="translate-y-0"
+      leave-to-class="translate-y-full"
+    >
+      <div
+        v-if="mobileExpanded"
+        class="fixed inset-0 z-40 flex flex-col overflow-hidden"
+        style="background:#111b21; padding-bottom:64px"
+      >
+        <!-- Panel Header with back button -->
+        <div class="wa-panel-header flex items-center gap-2 px-3 py-3">
+          <button type="button" class="wa-icon-btn shrink-0" @click="closeMobilePanel">
+            <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+              <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>
+          </button>
+          <h2 class="wa-title flex-1 text-[18px] font-semibold">
+            {{ mobileView === 'calls' ? 'Calls' : 'Contacts' }}
+          </h2>
+
+          <!-- Calls header actions -->
+          <template v-if="mobileView === 'calls'">
+            <button type="button" class="wa-icon-btn" @click="searchOpen = !searchOpen">
+              <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                <path d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+              </svg>
+            </button>
+            <div ref="callMenuRef" class="relative">
+              <button
+                type="button"
+                class="wa-icon-btn"
+                :disabled="selectingCallLogs || !filteredLogs.length || callLogActionDisabled"
+                @click.stop="toggleCallMenu"
+              >
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                  <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                </svg>
+              </button>
+              <transition
+                enter-active-class="transition duration-150 ease-out"
+                enter-from-class="translate-y-1 opacity-0"
+                enter-to-class="translate-y-0 opacity-100"
+                leave-active-class="transition duration-100 ease-in"
+                leave-from-class="translate-y-0 opacity-100"
+                leave-to-class="translate-y-1 opacity-0"
+              >
+                <div
+                  v-if="showCallMenu"
+                  class="wa-menu-dropdown absolute right-0 top-11 z-30 min-w-[140px] rounded-xl py-2"
+                  @click.stop
+                >
+                  <button
+                    type="button"
+                    class="wa-menu-item flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                    @click.stop="openDeleteSelection"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 6h18" stroke-linecap="round" />
+                      <path d="M8 6V4h8v2" stroke-linecap="round" stroke-linejoin="round" />
+                      <path d="M19 6l-1 14H6L5 6" stroke-linecap="round" stroke-linejoin="round" />
+                      <path d="M10 11v6M14 11v6" stroke-linecap="round" />
+                    </svg>
+                    Delete
+                  </button>
+                </div>
+              </transition>
+            </div>
+          </template>
+        </div>
+
+        <!-- Calls Panel Content -->
+        <template v-if="mobileView === 'calls'">
+          <!-- Search bar -->
+          <div v-if="searchOpen" class="wa-search-wrap px-3 pb-2">
+            <div class="wa-search-bar flex items-center gap-2 rounded-lg px-3 py-2">
+              <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0 wa-search-icon" fill="currentColor">
+                <path d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+              </svg>
+              <input
+                v-model="searchQuery"
+                type="text"
+                placeholder="Search in calls"
+                class="wa-search-input flex-1 bg-transparent text-sm outline-none"
+              />
+            </div>
+          </div>
+
+          <!-- Stats row -->
+          <div class="wa-stats-row mx-3 mb-2 mt-1 grid grid-cols-2 gap-2">
+            <div class="wa-stat-card flex items-center gap-2.5 rounded-xl px-3 py-2.5">
+              <div class="wa-stat-icon-wrap flex h-8 w-8 items-center justify-center rounded-full">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                  <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                </svg>
+              </div>
+              <div>
+                <p class="wa-stat-label">Total</p>
+                <p class="wa-stat-num">{{ callSummary.call_count || 0 }}</p>
+              </div>
+            </div>
+            <div class="wa-stat-card missed flex items-center gap-2.5 rounded-xl px-3 py-2.5">
+              <div class="wa-stat-icon-wrap missed flex h-8 w-8 items-center justify-center rounded-full">
+                <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                  <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                </svg>
+              </div>
+              <div>
+                <p class="wa-stat-label missed">Missed</p>
+                <p class="wa-stat-num missed">{{ callSummary.missed_calls || 0 }}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section label -->
+          <div class="wa-section-label flex items-center justify-between px-4 py-1.5">
+            <template v-if="selectingCallLogs">
+              <button
+                type="button"
+                class="wa-select-toggle"
+                :disabled="!visibleCallLogIds.length || callLogActionDisabled"
+                @click.stop="toggleSelectAll"
+              >
+                <span class="wa-select-box" :class="{ 'is-selected': allVisibleSelected }">
+                  <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </span>
+                <span>Select all</span>
+                <span class="wa-selected-count">{{ selectedCount }} selected</span>
+              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="selectedCount"
+                  type="button"
+                  class="wa-header-delete-btn flex h-8 w-8 items-center justify-center rounded-full"
+                  :disabled="callLogActionDisabled"
+                  @click.stop="deleteSelectedCallLogs"
+                >
+                  <svg v-if="deletingSelectedCallLogs" viewBox="0 0 24 24" class="h-4 w-4 animate-spin" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 1 1-6.2-8.56" stroke-linecap="round" />
+                  </svg>
+                  <svg v-else viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 6h18" stroke-linecap="round" />
+                    <path d="M8 6V4h8v2" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M19 6l-1 14H6L5 6" stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M10 11v6M14 11v6" stroke-linecap="round" />
+                  </svg>
+                </button>
+                <button type="button" class="wa-icon-btn" @click.stop="exitDeleteSelection">
+                  <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </template>
+            <template v-else>
+              <span>Recent</span>
+              <span class="wa-section-count">{{ filteredLogs.length }}</span>
+            </template>
+          </div>
+
+          <!-- Call log list -->
+          <div class="flex-1 overflow-y-auto wa-scroll">
+            <template v-if="filteredLogs.length">
+              <button
+                v-for="log in filteredLogs"
+                :key="log.call_id"
+                type="button"
+                class="wa-call-row group relative flex w-full items-center gap-3 px-4 py-3 text-left"
+                :class="{
+                  'wa-call-row-missed': isMissedCall(log),
+                  'wa-call-row-selected': selectingCallLogs && isCallLogSelected(log.call_id),
+                }"
+                @click="handleCallRowClick(log)"
+              >
+                <div v-if="selectingCallLogs" class="wa-checkbox-wrap flex h-5 w-5 shrink-0 items-center justify-center">
+                  <span class="wa-select-box" :class="{ 'is-selected': isCallLogSelected(log.call_id) }">
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="3">
+                      <path d="m5 12 4 4L19 6" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </span>
+                </div>
+                <div
+                  class="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+                  :style="{ background: avatarColor(log.peer) }"
+                >
+                  {{ initials(log.peer_name || log.peer) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-[15px] font-medium wa-call-name" :class="isMissedCall(log) ? 'wa-missed-text' : ''">
+                    {{ log.peer_name || log.peer }}
+                  </p>
+                  <div class="mt-0.5 flex items-center gap-1">
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" :class="directionIconClass(log)" fill="currentColor">
+                      <path v-if="log.direction === 'outgoing'" d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/>
+                      <path v-else d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/>
+                    </svg>
+                    <span class="text-xs wa-call-meta" :class="isMissedCall(log) ? 'wa-missed-text' : ''">
+                      {{ callTypeLabel(log) }}
+                    </span>
+                    <span class="text-xs wa-call-meta">· {{ formatTime(log.start_time || log.end_time) }}</span>
+                    <span v-if="log.duration && log.status === 'Completed'" class="text-xs wa-call-meta">· {{ log.duration }}</span>
+                  </div>
+                </div>
+                <div v-if="!selectingCallLogs" class="flex items-center gap-1">
+                  <span
+                    class="wa-cb-btn flex h-8 w-8 items-center justify-center rounded-full"
+                    :class="log.call_type === 'Video' ? 'wa-cb-video' : 'wa-cb-audio'"
+                    @click.stop="emit('call-peer', { peer: log.peer, type: log.call_type === 'Video' ? 'video' : 'audio' })"
+                  >
+                    <svg v-if="log.call_type === 'Video'" viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                      <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                      <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                    </svg>
+                  </span>
+                </div>
+                <div class="wa-row-divider absolute bottom-0 left-[64px] right-0 h-px"></div>
+              </button>
+            </template>
+            <div v-else class="flex flex-col items-center justify-center py-16 text-center">
+              <div class="wa-empty-icon mb-4 flex h-16 w-16 items-center justify-center rounded-full">
+                <svg viewBox="0 0 24 24" class="h-7 w-7" fill="currentColor" style="color:#8696a0">
+                  <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+                </svg>
+              </div>
+              <p class="text-[15px] font-medium" style="color:#e9edef">No recent calls</p>
+              <p class="mt-1 text-sm" style="color:#8696a0">Call a contact to get started</p>
+            </div>
+          </div>
+        </template>
+
+        <!-- Contacts placeholder -->
+        <template v-else-if="mobileView === 'contacts'">
+          <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <div class="wa-empty-icon flex h-16 w-16 items-center justify-center rounded-full">
+              <svg viewBox="0 0 24 24" class="h-7 w-7" fill="currentColor" style="color:#8696a0">
+                <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+              </svg>
+            </div>
+            <p class="text-[15px] font-medium" style="color:#e9edef">Contacts</p>
+            <p class="text-sm" style="color:#8696a0">Coming soon</p>
+          </div>
+        </template>
+      </div>
+    </transition>
+
+    <!-- ── Fixed Bottom Nav Bar ──────────────────────────────────── -->
+    <nav
+      class="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around"
+      style="background:#202c33; border-top:1px solid rgba(255,255,255,0.07)"
+    >
+      <!-- Chats -->
+      <button
+        type="button"
+        class="flex flex-col items-center gap-0.5 px-3 py-1 transition-colors"
+        :style="{ color: !mobileExpanded ? '#00a884' : '#8696a0' }"
+        @click="closeMobilePanel"
+      >
+        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor">
+          <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-2 10H6v-2h12v2zm0-3H6V7h12v2z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Chats</span>
+      </button>
+
+      <!-- Calls -->
+      <button
+        type="button"
+        class="flex flex-col items-center gap-0.5 px-3 py-1 transition-colors"
+        :style="{ color: mobileExpanded && mobileView === 'calls' ? '#00a884' : '#8696a0' }"
+        @click="openMobilePanel('calls')"
+      >
+        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor">
+          <path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Calls</span>
+      </button>
+
+      <!-- Contacts -->
+      <button
+        type="button"
+        class="flex flex-col items-center gap-0.5 px-3 py-1 transition-colors"
+        :style="{ color: mobileExpanded && mobileView === 'contacts' ? '#00a884' : '#8696a0' }"
+        @click="openMobilePanel('contacts')"
+      >
+        <svg viewBox="0 0 24 24" class="h-6 w-6" fill="currentColor">
+          <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+        </svg>
+        <span class="text-[10px] font-medium">Contacts</span>
+      </button>
+
+      <!-- Profile Avatar -->
+      <div ref="mobileProfileRef" class="relative px-3 py-1">
+        <transition
+          enter-active-class="transition duration-150 ease-out"
+          enter-from-class="translate-y-2 opacity-0"
+          enter-to-class="translate-y-0 opacity-100"
+          leave-active-class="transition duration-100 ease-in"
+          leave-from-class="translate-y-0 opacity-100"
+          leave-to-class="translate-y-2 opacity-0"
+        >
+          <div
+            v-if="mobileProfileOpen"
+            class="wa-profile-popup absolute bottom-full right-0 z-50 mb-2 w-60 rounded-2xl p-3 shadow-2xl"
+            @click.stop
+          >
+            <p class="wa-profile-popup-title">Profile</p>
+            <div class="wa-profile-popup-card mt-3 flex items-center gap-3 rounded-2xl px-3 py-3">
+              <div
+                class="flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white"
+                :style="{ background: avatarBg }"
+              >
+                {{ currentUserInitials }}
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold" style="color:#e9edef">{{ currentUserName }}</p>
+                <p class="truncate text-xs" style="color:#8696a0">{{ currentUserEmail }}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="wa-logout-btn mt-3 flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition"
+              @click="handleLogout"
+            >
+              <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+              </svg>
+              Logout
+            </button>
+          </div>
+        </transition>
+
+        <button
+          type="button"
+          class="wa-avatar-top flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white"
+          :style="{ background: avatarBg }"
+          @click.stop="toggleMobileProfile"
+        >
+          {{ currentUserInitials }}
+        </button>
+      </div>
+    </nav>
+  </div>
 </template>
 
 <script setup>
@@ -396,6 +688,7 @@ const props = defineProps({
   deletingSelectedCallLogs: { type: Boolean, default: false },
   clearingCallLogs:   { type: Boolean, default: false },
   expanded:           { type: Boolean, default: false },
+  chatOpen:           { type: Boolean, default: false },
 })
 
 // ── State ────────────────────────────────────────────────────────────
@@ -403,11 +696,17 @@ const activeView  = ref('calls')
 const searchOpen  = ref(false)
 const searchQuery = ref('')
 const showProfileMenu = ref(false)
-const profileMenuRef = ref(null)
-const showCallMenu = ref(false)
-const callMenuRef = ref(null)
-const selectingCallLogs = ref(false)
-const selectedCallIds = ref([])
+const profileMenuRef  = ref(null)
+const showCallMenu    = ref(false)
+const callMenuRef     = ref(null)
+const selectingCallLogs  = ref(false)
+const selectedCallIds    = ref([])
+
+// Mobile state
+const mobileExpanded    = ref(false)
+const mobileView        = ref('calls')
+const mobileProfileOpen = ref(false)
+const mobileProfileRef  = ref(null)
 
 // ── Computed ─────────────────────────────────────────────────────────
 const avatarBg = computed(() => avatarColor(props.currentUserName))
@@ -421,9 +720,7 @@ const filteredLogs = computed(() => {
 })
 
 const visibleCallLogIds = computed(() =>
-  filteredLogs.value
-    .map(log => log.call_id)
-    .filter(Boolean)
+  filteredLogs.value.map(log => log.call_id).filter(Boolean)
 )
 
 const allVisibleSelected = computed(
@@ -436,20 +733,13 @@ const callLogActionDisabled = computed(
   () => props.clearingCallLogs || Boolean(props.deletingCallId) || props.deletingSelectedCallLogs
 )
 
-const panelTitle = computed(() => {
-  if (activeView.value === 'contacts') return 'Contacts'
-  if (activeView.value === 'chats')    return 'Chats'
-  return ''
-})
-
 const emit = defineEmits(['logout', 'select-peer', 'call-peer', 'toggle', 'delete-log', 'delete-selected', 'clear-logs'])
 
-// ── Methods ──────────────────────────────────────────────────────────
+// ── Desktop Methods ──────────────────────────────────────────────────
 function openPanel(view) {
   closeCallMenu()
   exitDeleteSelection()
   closeProfileMenu()
-  // same panel clicked while open → close sidebar
   if (props.expanded && activeView.value === view) {
     emit('toggle')
     return
@@ -460,9 +750,7 @@ function openPanel(view) {
   if (!props.expanded) emit('toggle')
 }
 
-function closeProfileMenu() {
-  showProfileMenu.value = false
-}
+function closeProfileMenu() { showProfileMenu.value = false }
 
 function toggleProfileMenu() {
   closeCallMenu()
@@ -472,12 +760,11 @@ function toggleProfileMenu() {
 function handleLogout() {
   closeCallMenu()
   closeProfileMenu()
+  closeMobileProfile()
   emit('logout')
 }
 
-function closeCallMenu() {
-  showCallMenu.value = false
-}
+function closeCallMenu() { showCallMenu.value = false }
 
 function toggleCallMenu() {
   if (selectingCallLogs.value || !filteredLogs.value.length || callLogActionDisabled.value) return
@@ -517,7 +804,6 @@ function toggleSelectAll() {
     selectedCallIds.value = selectedCallIds.value.filter(id => !visibleCallLogIds.value.includes(id))
     return
   }
-
   const nextSelectedIds = new Set(selectedCallIds.value)
   visibleCallLogIds.value.forEach(callId => nextSelectedIds.add(callId))
   selectedCallIds.value = [...nextSelectedIds]
@@ -528,7 +814,6 @@ function handleCallRowClick(log) {
     toggleCallSelection(log.call_id)
     return
   }
-
   emit('select-peer', log.peer)
 }
 
@@ -537,23 +822,39 @@ function deleteSelectedCallLogs() {
   emit('delete-selected', selectedCallIds.value.slice())
 }
 
-function handleDocumentClick(event) {
-  if (!profileMenuRef.value?.contains(event.target)) {
-    closeProfileMenu()
-  }
-
-  if (!callMenuRef.value?.contains(event.target)) {
-    closeCallMenu()
-  }
+// ── Mobile Methods ───────────────────────────────────────────────────
+function openMobilePanel(view) {
+  mobileView.value = view
+  mobileExpanded.value = true
+  searchOpen.value  = false
+  searchQuery.value = ''
+  closeCallMenu()
 }
 
+function closeMobilePanel() {
+  mobileExpanded.value = false
+}
+
+function toggleMobileProfile() {
+  mobileProfileOpen.value = !mobileProfileOpen.value
+}
+
+function closeMobileProfile() {
+  mobileProfileOpen.value = false
+}
+
+// ── Document click handler ───────────────────────────────────────────
+function handleDocumentClick(event) {
+  if (!profileMenuRef.value?.contains(event.target)) closeProfileMenu()
+  if (!callMenuRef.value?.contains(event.target)) closeCallMenu()
+  if (!mobileProfileRef.value?.contains(event.target)) closeMobileProfile()
+}
+
+// ── Watchers ─────────────────────────────────────────────────────────
 watch(
   () => props.expanded,
   expanded => {
-    if (expanded) {
-      closeProfileMenu()
-      closeCallMenu()
-    }
+    if (expanded) { closeProfileMenu(); closeCallMenu() }
   }
 )
 
@@ -562,11 +863,7 @@ watch(
   logs => {
     const availableCallIds = new Set(logs.map(log => log.call_id))
     selectedCallIds.value = selectedCallIds.value.filter(callId => availableCallIds.has(callId))
-
-    if (!logs.length) {
-      closeCallMenu()
-      exitDeleteSelection()
-    }
+    if (!logs.length) { closeCallMenu(); exitDeleteSelection() }
   },
   { deep: true }
 )
@@ -574,20 +871,14 @@ watch(
 watch(
   () => props.deletingSelectedCallLogs,
   isDeleting => {
-    if (!isDeleting && selectingCallLogs.value && !selectedCallIds.value.length) {
-      exitDeleteSelection()
-    }
+    if (!isDeleting && selectingCallLogs.value && !selectedCallIds.value.length) exitDeleteSelection()
   }
 )
 
-onMounted(() => {
-  document.addEventListener('click', handleDocumentClick)
-})
+onMounted(() => { document.addEventListener('click', handleDocumentClick) })
+onUnmounted(() => { document.removeEventListener('click', handleDocumentClick) })
 
-onUnmounted(() => {
-  document.removeEventListener('click', handleDocumentClick)
-})
-
+// ── Helpers ──────────────────────────────────────────────────────────
 function initials(name) {
   return (name || '?').trim().split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase()
 }
@@ -623,9 +914,8 @@ function formatTime(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
   const now = new Date()
-  if (d.toDateString() === now.toDateString()) {
+  if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
   return d.toLocaleDateString([], { day: '2-digit', month: 'short' })
 }
 </script>
@@ -683,21 +973,12 @@ function formatTime(value) {
   box-shadow: 0 18px 40px rgba(0,0,0,0.28);
 }
 
-.wa-menu-item {
-  color: #e9edef;
-  transition: background 0.15s, color 0.15s;
-}
-
-.wa-menu-item:hover {
-  background: rgba(255,255,255,0.08);
-}
+.wa-menu-item { color: #e9edef; transition: background 0.15s, color 0.15s; }
+.wa-menu-item:hover { background: rgba(255,255,255,0.08); }
 
 /* Search bar */
 .wa-search-wrap { background: #202c33; padding-bottom: 8px; }
-.wa-search-bar {
-  background: #2a3942;
-  border-radius: 8px;
-}
+.wa-search-bar { background: #2a3942; border-radius: 8px; }
 .wa-search-icon { color: #8696a0; }
 .wa-search-input { color: #d1d7db; }
 .wa-search-input::placeholder { color: #8696a0; }
@@ -754,10 +1035,7 @@ function formatTime(value) {
   transition: opacity 0.15s;
 }
 
-.wa-select-toggle:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+.wa-select-toggle:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .wa-select-box {
   display: inline-flex;
@@ -778,9 +1056,7 @@ function formatTime(value) {
   color: #111b21;
 }
 
-.wa-selected-count {
-  color: #8696a0;
-}
+.wa-selected-count { color: #8696a0; }
 
 .wa-header-delete-btn {
   color: #fca5a5;
@@ -788,22 +1064,11 @@ function formatTime(value) {
   border: 1px solid rgba(241,92,109,0.18);
   transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
-
-.wa-header-delete-btn:hover {
-  background: rgba(241,92,109,0.18);
-  color: #ffffff;
-}
-
-.wa-header-delete-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+.wa-header-delete-btn:hover { background: rgba(241,92,109,0.18); color: #ffffff; }
+.wa-header-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Call rows ───────────────────────────────────────────────────── */
-.wa-call-row {
-  background: #111b21;
-  transition: background 0.12s;
-}
+.wa-call-row { background: #111b21; transition: background 0.12s; }
 .wa-call-row:hover { background: #202c33; }
 .wa-call-row-selected { background: rgba(0,168,132,0.14); }
 .wa-call-row-selected:hover { background: rgba(0,168,132,0.18); }
@@ -811,7 +1076,6 @@ function formatTime(value) {
 .wa-call-name { color: #e9edef; }
 .wa-call-meta { color: #8696a0; }
 .wa-missed-text { color: #f15c6d !important; }
-
 .wa-row-divider { background: rgba(255,255,255,0.05); }
 
 /* Callback button */
@@ -862,13 +1126,4 @@ function formatTime(value) {
   color: #f15c6d;
 }
 .wa-logout-btn:hover { background: rgba(241,92,109,0.18); color: #fff; }
-
-/* ── Responsive ──────────────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .wa-sidebar {
-    position: fixed;
-    left: 0; top: 0;
-    height: 100dvh;
-  }
-}
 </style>

@@ -57,7 +57,7 @@ export function initSocket() {
 	socket = io(url, {
 		withCredentials: true,
 		reconnectionAttempts: 5,
-		transports: ["websocket", "polling"],
+		transports: ["polling", "websocket"],
 		autoConnect: false,
 	})
 

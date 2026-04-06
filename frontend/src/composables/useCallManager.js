@@ -600,7 +600,7 @@ export function useCallManager(options = {}) {
     options.onIncomingCall?.(incomingCall.value, payload)
     callStatus.value = 'incoming'
     playTone('incoming')
-    console.debug('[call] incoming event', payload)
+    // console.debug('[call] incoming event', payload)
     options.onCallStateChange?.()
   }
 
