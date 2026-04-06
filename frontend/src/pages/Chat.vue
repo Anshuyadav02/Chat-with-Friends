@@ -175,24 +175,74 @@
                 :class="isOwnMessage(msg) ? 'items-end' : 'items-start'"
               >
                 <div class="group relative w-full max-w-[85%] sm:max-w-md">
-                  <button
-                    v-if="msg.id"
-                    type="button"
-                    class="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition"
+
+                  <!-- ── Hover action bar ── -->
+                  <div
+                    v-if="msg.id && !msg.deleted_for_everyone"
+                    class="absolute -top-9 z-30 flex items-center gap-0.5 rounded-full border border-gray-200 bg-white/95 px-1.5 py-1 shadow-lg backdrop-blur transition-all duration-150"
                     :class="[
-                      activeMessageMenuId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
-                      isOwnMessage(msg)
-                        ? 'border-white/20 bg-white/10 text-white backdrop-blur hover:bg-white/20'
-                        : 'border-gray-200 bg-white/90 text-gray-500 shadow-sm hover:bg-gray-50',
+                      isOwnMessage(msg) ? 'right-0' : 'left-0',
+                      activeMessageMenuId === msg.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto',
                     ]"
-                    @click.stop="toggleMessageMenu(msg.id)"
+                    @click.stop
                   >
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
-                      <circle cx="5" cy="12" r="1.7" />
-                      <circle cx="12" cy="12" r="1.7" />
-                      <circle cx="19" cy="12" r="1.7" />
-                    </svg>
-                  </button>
+                    <!-- Quick reaction emojis -->
+                    <button v-for="emoji in quickReactions" :key="emoji" type="button"
+                      class="flex h-7 w-7 items-center justify-center rounded-full text-base transition hover:bg-gray-100 hover:scale-125"
+                      @click.stop="sendReaction(msg, emoji)"
+                    >{{ emoji }}</button>
+
+                    <!-- More reactions -->
+                    <button type="button"
+                      class="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100"
+                      @click.stop="openReactionPicker(msg)"
+                      title="More reactions"
+                    >
+                      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm1-11h-2v3H8v2h3v3h2v-3h3v-2h-3z"/>
+                      </svg>
+                    </button>
+
+                    <div class="mx-1 h-5 w-px bg-gray-200"></div>
+
+                    <!-- Reply button -->
+                    <button type="button"
+                      class="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-green-600"
+                      title="Reply"
+                      @click.stop="startReply(msg)"
+                    >
+                      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                        <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/>
+                      </svg>
+                    </button>
+
+                    <!-- 3-dot menu button -->
+                    <button type="button"
+                      class="flex h-7 w-7 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100"
+                      :class="activeMessageMenuId === msg.id ? 'bg-gray-100 text-gray-700' : ''"
+                      title="More options"
+                      @click.stop="toggleMessageMenu(msg.id)"
+                    >
+                      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="currentColor">
+                        <circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <!-- ── Reaction picker popup ── -->
+                  <div
+                    v-if="reactionPickerMsgId === msg.id"
+                    class="absolute -top-[120px] z-40 w-72 rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl"
+                    :class="isOwnMessage(msg) ? 'right-0' : 'left-0'"
+                    @click.stop
+                  >
+                    <div class="grid grid-cols-10 gap-0.5 max-h-32 overflow-y-auto">
+                      <button v-for="emoji in reactionEmojis" :key="emoji" type="button"
+                        class="flex h-7 w-7 items-center justify-center rounded-lg text-base transition hover:bg-gray-100 hover:scale-125"
+                        @click.stop="sendReaction(msg, emoji); reactionPickerMsgId = ''"
+                      >{{ emoji }}</button>
+                    </div>
+                  </div>
 
                   <div
                     class="relative overflow-hidden rounded-[26px] px-3 py-2 pr-12 text-sm shadow"
@@ -365,6 +415,25 @@
                     </button>
                   </div>
                 </div>
+                <!-- Reactions display -->
+                <div
+                  v-if="messageReactions[msg.id] && Object.keys(messageReactions[msg.id]).length"
+                  class="mt-1 flex flex-wrap gap-1 px-1"
+                  :class="isOwnMessage(msg) ? 'justify-end' : 'justify-start'"
+                >
+                  <button
+                    v-for="(users, emoji) in messageReactions[msg.id]"
+                    :key="emoji"
+                    type="button"
+                    class="flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-xs shadow-sm transition hover:bg-gray-50"
+                    :class="users.includes(session.user) ? 'border-green-300 bg-green-50' : 'border-gray-200'"
+                    @click.stop="sendReaction(msg, emoji)"
+                  >
+                    <span class="text-sm">{{ emoji }}</span>
+                    <span class="font-medium text-gray-600">{{ users.length }}</span>
+                  </button>
+                </div>
+
                 <div
                   class="mt-1 px-1 text-[10px]"
                   :class="isOwnMessage(msg) ? 'text-right text-gray-500' : 'text-left text-gray-500'"
@@ -377,6 +446,27 @@
 
           <div class="border-t bg-white px-2 py-2 sm:px-4">
             <input ref="fileInputRef" type="file" class="hidden" @change="handleAttachmentSelection" />
+
+            <!-- Reply preview strip -->
+            <div v-if="replyingTo" class="mb-2 flex items-center gap-2 rounded-xl border-l-4 border-green-500 bg-green-50 px-3 py-2">
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-green-700">
+                  {{ replyingTo.sender === session.user ? 'You' : (selectedUser?.full_name || selectedUser?.name) }}
+                </p>
+                <p class="truncate text-xs text-gray-500">
+                  {{ replyingTo.attachment ? '📎 ' + (replyingTo.attachment.file_name || 'Attachment') : replyingTo.message }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-200 hover:text-gray-600"
+                @click="replyingTo = null"
+              >
+                <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <path d="m6 6 12 12M18 6 6 18" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
 
             <div v-if="uploadingAttachment || pendingAttachment" class="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2">
               <div class="min-w-0">
@@ -400,10 +490,112 @@
               </button>
             </div>
 
-            <div class="flex gap-2">
+            <div class="relative flex gap-2 items-center">
+
+              <!-- ── 3-dot button (mobile only) ── -->
+              <div class="relative sm:hidden">
+                <button
+                  type="button"
+                  class="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="!selectedUser || sending || uploadingAttachment"
+                  @click.stop="showMoreMenu = !showMoreMenu"
+                >
+                  <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                    <circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>
+                  </svg>
+                </button>
+
+                <!-- Popup with icons -->
+                <transition
+                  enter-active-class="transition duration-150 ease-out"
+                  enter-from-class="translate-y-2 opacity-0"
+                  enter-to-class="translate-y-0 opacity-100"
+                  leave-active-class="transition duration-100 ease-in"
+                  leave-from-class="translate-y-0 opacity-100"
+                  leave-to-class="translate-y-2 opacity-0"
+                >
+                  <div
+                    v-if="showMoreMenu"
+                    class="absolute bottom-14 left-0 z-50 flex gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-2xl"
+                    @click.stop
+                  >
+                    <!-- Attach file -->
+                    <button
+                      type="button"
+                      class="flex flex-col items-center gap-1"
+                      @click="openAttachmentPicker(); showMoreMenu = false"
+                    >
+                      <span class="flex h-11 w-11 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M21.44 11.05 12.25 20a6 6 0 1 1-8.49-8.48l9.19-8.95a4 4 0 0 1 5.66 5.65l-9.2 8.95a2 2 0 1 1-2.82-2.83l8.49-8.24" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      </span>
+                      <span class="text-[10px] text-gray-500">File</span>
+                    </button>
+
+                    <!-- Camera / Image -->
+                    <button
+                      type="button"
+                      class="flex flex-col items-center gap-1"
+                      @click="openImagePicker(); showMoreMenu = false"
+                    >
+                      <span class="flex h-11 w-11 items-center justify-center rounded-full bg-pink-100 text-pink-600">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                          <path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-8 13a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/>
+                        </svg>
+                      </span>
+                      <span class="text-[10px] text-gray-500">Photo</span>
+                    </button>
+
+                    <!-- Audio -->
+                    <button
+                      type="button"
+                      class="flex flex-col items-center gap-1"
+                      @click="openAudioPicker(); showMoreMenu = false"
+                    >
+                      <span class="flex h-11 w-11 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                          <path d="M12 3a4 4 0 0 1 4 4v5a4 4 0 0 1-8 0V7a4 4 0 0 1 4-4zm7 9a1 1 0 0 1 2 0 9 9 0 0 1-8 8.94V22h2a1 1 0 0 1 0 2H9a1 1 0 0 1 0-2h2v-1.06A9 9 0 0 1 3 12a1 1 0 0 1 2 0 7 7 0 0 0 14 0z"/>
+                        </svg>
+                      </span>
+                      <span class="text-[10px] text-gray-500">Audio</span>
+                    </button>
+
+                    <!-- Video -->
+                    <button
+                      type="button"
+                      class="flex flex-col items-center gap-1"
+                      @click="openVideoPicker(); showMoreMenu = false"
+                    >
+                      <span class="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                          <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+                        </svg>
+                      </span>
+                      <span class="text-[10px] text-gray-500">Video</span>
+                    </button>
+
+                    <!-- Document -->
+                    <button
+                      type="button"
+                      class="flex flex-col items-center gap-1"
+                      @click="openDocPicker(); showMoreMenu = false"
+                    >
+                      <span class="flex h-11 w-11 items-center justify-center rounded-full bg-green-100 text-green-600">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                        </svg>
+                      </span>
+                      <span class="text-[10px] text-gray-500">Doc</span>
+                    </button>
+                  </div>
+                </transition>
+              </div>
+
+              <!-- ── Attach button (desktop only) ── -->
               <button
                 type="button"
-                class="flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
+                class="hidden sm:flex h-10 w-10 items-center justify-center rounded-full border border-gray-300 bg-white text-gray-600 transition hover:border-green-400 hover:text-green-600 disabled:cursor-not-allowed disabled:opacity-50"
                 :disabled="!selectedUser || sending || uploadingAttachment"
                 @click="openAttachmentPicker"
               >
@@ -412,16 +604,69 @@
                 </svg>
               </button>
 
-              <textarea
-                v-model="newMessage"
-                rows="1"
-                placeholder="Type..."
-                class="flex-1 resize-none rounded-full border px-4 py-2 text-sm focus:ring-1 focus:ring-green-400"
-                @keydown.enter.exact.prevent="sendMessage"
-                @input="onTyping"
-                @blur="stopTyping"
-              />
+              <!-- ── Textarea ── -->
+              <div class="relative flex-1">
+                <textarea
+                  v-model="newMessage"
+                  rows="1"
+                  placeholder="Type..."
+                  class="w-full resize-none rounded-full border px-4 py-2 pr-10 text-sm focus:ring-1 focus:ring-green-400"
+                  @keydown.enter.exact.prevent="sendMessage"
+                  @input="onTyping"
+                  @blur="stopTyping"
+                />
 
+                <!-- Emoji button inside textarea -->
+                <div class="absolute right-2 top-1/2 -translate-y-1/2">
+                  <button
+                    type="button"
+                    class="flex h-7 w-7 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-yellow-500"
+                    @click.stop="showEmojiPicker = !showEmojiPicker"
+                  >
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Emoji Popup -->
+                  <transition
+                    enter-active-class="transition duration-150 ease-out"
+                    enter-from-class="translate-y-2 opacity-0 scale-95"
+                    enter-to-class="translate-y-0 opacity-100 scale-100"
+                    leave-active-class="transition duration-100 ease-in"
+                    leave-from-class="translate-y-0 opacity-100 scale-100"
+                    leave-to-class="translate-y-2 opacity-0 scale-95"
+                  >
+                    <div
+                      v-if="showEmojiPicker"
+                      class="absolute bottom-10 right-0 z-50 w-72 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl"
+                      @click.stop
+                    >
+                      <div class="mb-2 flex flex-wrap gap-1 border-b pb-2">
+                        <button
+                          v-for="cat in emojiCategories"
+                          :key="cat.name"
+                          type="button"
+                          class="rounded-lg px-2 py-1 text-sm transition"
+                          :class="activeEmojiCategory === cat.name ? 'bg-green-100 text-green-700' : 'hover:bg-gray-100'"
+                          @click="activeEmojiCategory = cat.name"
+                        >{{ cat.icon }}</button>
+                      </div>
+                      <div class="grid grid-cols-8 gap-0.5 max-h-48 overflow-y-auto">
+                        <button
+                          v-for="emoji in currentEmojis"
+                          :key="emoji"
+                          type="button"
+                          class="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition hover:bg-gray-100"
+                          @click="insertEmoji(emoji)"
+                        >{{ emoji }}</button>
+                      </div>
+                    </div>
+                  </transition>
+                </div>
+              </div>
+
+              <!-- ── Send button ── -->
               <button
                 type="button"
                 class="flex h-10 w-10 items-center justify-center rounded-full bg-green-500 text-white transition hover:bg-green-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -599,6 +844,87 @@ const forwardSearch = ref('')
 const messageActionBusyId = ref('')
 const typingUsers = ref({})
 const onlineUsers = ref([])
+const showMoreMenu = ref(false)
+const showEmojiPicker = ref(false)
+const activeEmojiCategory = ref('smileys')
+const replyingTo = ref(null)
+const reactionPickerMsgId = ref('')
+const messageReactions = ref({})  // { msgId: { '👍': ['user1','user2'], '❤️': ['user3'] } }
+
+const quickReactions = ['👍', '❤️', '😆', '😮', '😢']
+const reactionEmojis = ['👍','👎','❤️','🔥','😆','😮','😢','🙏','😍','🎉','👏','😂','🤔','💯','✅','😊','🥰','😭','😱','🤣','😅','😎','🤩','😇','🥳','😜','😋','😉','🤗','😴']
+
+const emojiCategories = [
+  { name: 'smileys', icon: '😀', emojis: ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕'] },
+  { name: 'hearts', icon: '❤️', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','☮️','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏'] },
+  { name: 'people', icon: '👋', emojis: ['👋','🤚','🖐️','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','🫶','🤝','🙏','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🫀','🫁','🧠','🦷','🦴','👀','👁️','👅','👄','💋'] },
+  { name: 'nature', icon: '🐶', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐻‍❄️','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🪱','🐛','🦋','🐌','🐞','🐜','🪲','🦟','🦗','🪳','🦂','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🦧','🦣','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🦬','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🦙','🐐','🦌','🐕','🐩','🦮','🐈','🪶','🐓','🦃','🦤','🦚','🦜','🦢','🦩','🕊️','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿️','🦔'] },
+  { name: 'food', icon: '🍕', emojis: ['🍕','🍔','🌮','🌯','🥗','🍜','🍝','🍛','🍲','🥘','🥫','🍱','🍣','🍤','🍙','🍚','🍘','🥟','🦪','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🍵','🧃','🥤','🧋','🍶','🍺','🍻','🥂','🍷','🥃','🍸','🍹','🧉','🍾','🧊','🥄','🍴','🍽️','🥢','🧂'] },
+  { name: 'activity', icon: '⚽', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','🪃','🥅','⛳','🪁','🏹','🎣','🤿','🥊','🥋','🎽','🛹','🛼','🛷','⛸️','🥌','🎿','⛷️','🏂','🪂','🏋️','🤼','🤸','🤺','🏇','⛹️','🤾','🏌️','🏄','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖️','🏵️','🎗️','🎫','🎟️','🎪','🤹','🎭','🩰','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🪘','🎷','🎺','🎸','🪕','🎻','🎲','♟️','🎯','🎳','🎮','🎰','🧩'] },
+  { name: 'travel', icon: '✈️', emojis: ['✈️','🚀','🛸','🚁','🛺','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','🚊','🚝','🚞','🚋','🚌','🚍','🚎','🚐','🚑','🚒','🚓','🚔','🚕','🚖','🚗','🚘','🚙','🛻','🚚','🚛','🚜','🏎️','🏍️','🛵','🦽','🦼','🛺','🚲','🛴','🛹','🛼','🚏','🛣️','🛤️','⛽','🚨','🚥','🚦','🛑','🚧','⚓','🪝','⛵','🚤','🛥️','🛳️','⛴️','🚢','🛟','🪂','💺','🚁','🛸','🪐','🌍','🌎','🌏','🗺️','🧭','🏔️','⛰️','🌋','🗻','🏕️','🏖️','🏜️','🏝️','🏞️','🏟️','🏛️','🏗️','🧱','🪨','🪵'] },
+]
+
+const currentEmojis = computed(() => {
+  return emojiCategories.find(c => c.name === activeEmojiCategory.value)?.emojis || []
+})
+
+function insertEmoji(emoji) {
+  newMessage.value += emoji
+}
+
+function openImagePicker() {
+  if (!fileInputRef.value) return
+  fileInputRef.value.accept = 'image/*'
+  fileInputRef.value.click()
+}
+
+function openAudioPicker() {
+  if (!fileInputRef.value) return
+  fileInputRef.value.accept = 'audio/*'
+  fileInputRef.value.click()
+}
+
+function openVideoPicker() {
+  if (!fileInputRef.value) return
+  fileInputRef.value.accept = 'video/*'
+  fileInputRef.value.click()
+}
+
+function openDocPicker() {
+  if (!fileInputRef.value) return
+  fileInputRef.value.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar'
+  fileInputRef.value.click()
+}
+
+function startReply(msg) {
+  replyingTo.value = msg
+  activeMessageMenuId.value = ''
+  // focus textarea
+  nextTick(() => {
+    const ta = document.querySelector('textarea[placeholder="Type..."]')
+    if (ta) ta.focus()
+  })
+}
+
+function openReactionPicker(msg) {
+  reactionPickerMsgId.value = reactionPickerMsgId.value === msg.id ? '' : msg.id
+}
+
+function sendReaction(msg, emoji) {
+  if (!msg.id) return
+  const reactions = messageReactions.value[msg.id] || {}
+  const users = reactions[emoji] ? [...reactions[emoji]] : []
+  const idx = users.indexOf(session.user)
+  if (idx === -1) {
+    users.push(session.user)
+  } else {
+    users.splice(idx, 1)
+  }
+  const updated = { ...reactions, [emoji]: users }
+  // remove emoji key if no users
+  if (!updated[emoji].length) delete updated[emoji]
+  messageReactions.value = { ...messageReactions.value, [msg.id]: updated }
+}
 const lastSeen = ref(JSON.parse(localStorage.getItem('lastSeen') || '{}'))
 const selectedUserName = ref(localStorage.getItem(SELECTED_USER_KEY) || '')
 const recentCallLogs = ref([])
@@ -1547,8 +1873,19 @@ async function forwardSelectedMessage(user) {
 }
 
 function sendMessage() {
-  const text = newMessage.value.trim()
+  let text = newMessage.value.trim()
   const attachment = pendingAttachment.value ? { ...pendingAttachment.value } : null
+
+  // prepend reply quote
+  if (replyingTo.value && (text || attachment)) {
+    const quoted = replyingTo.value.attachment
+      ? `📎 ${replyingTo.value.attachment.file_name || 'Attachment'}`
+      : (replyingTo.value.message || '')
+    const senderLabel = replyingTo.value.sender === session.user
+      ? 'You'
+      : (selectedUser.value?.full_name || selectedUser.value?.name || replyingTo.value.sender)
+    text = `> ${senderLabel}: ${quoted}\n${text}`
+  }
 
   if ((!text && !attachment) || sending.value || uploadingAttachment.value || !selectedUser.value) return
 
@@ -1559,6 +1896,7 @@ function sendMessage() {
   }
   newMessage.value = ''
   pendingAttachment.value = null
+  replyingTo.value = null
   stopTyping()
 
   const payload = {
@@ -1574,12 +1912,19 @@ function sendMessage() {
 let typingTimeout = null
 function handleWindowClick() {
   closeMessageMenu()
+  showMoreMenu.value = false
+  showEmojiPicker.value = false
+  reactionPickerMsgId.value = ''
 }
 
 function handleWindowKeydown(event) {
   if (event.key !== 'Escape') return
 
   closeMessageMenu()
+  showMoreMenu.value = false
+  showEmojiPicker.value = false
+  reactionPickerMsgId.value = ''
+  replyingTo.value = null
   if (editingMessageId.value) {
     cancelEditingMessage()
   } else if (forwardingMessage.value) {

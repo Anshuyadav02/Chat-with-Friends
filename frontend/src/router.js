@@ -18,8 +18,12 @@ const routes = [
 		path: "/signup",
 		component: () => import("@/pages/Signup.vue"),
 	},
+	{
+		name: "Status",
+		path: "/status",
+		component: () => import("@/pages/status.vue"),
+	},
 ]
-
 const router = createRouter({
 	history: createWebHistory("/frontend"),
 	routes,
