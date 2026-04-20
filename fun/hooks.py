@@ -143,23 +143,11 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"fun.tasks.all"
-# 	],
-# 	"daily": [
-# 		"fun.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"fun.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"fun.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"fun.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"fun.fun.tasks.delete_expired_statuses"
+	],
+}
 
 # Testing
 # -------

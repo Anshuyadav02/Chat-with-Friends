@@ -7,7 +7,8 @@
     "field_order": [
         "sender",
         "message",
-        "timestamp"
+        "timestamp",
+        "reactions"
     ],
     "fields": [
         {
@@ -30,6 +31,12 @@
             "fieldtype": "Datetime",
             "in_list_view": 1,
             "label": "Timestamp"
+        },
+        {
+            "default": "{}",
+            "fieldname": "reactions",
+            "fieldtype": "Long Text",
+            "label": "Reactions"
         }
     ],
     "istable": 1,

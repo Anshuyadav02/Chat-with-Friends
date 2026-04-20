@@ -1,0 +1,39 @@
+{
+ "creation": "2026-04-06 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "commenter",
+  "text",
+  "timestamp"
+ ],
+ "fields": [
+  {
+   "fieldname": "commenter",
+   "fieldtype": "Link",
+   "label": "Commenter",
+   "options": "User",
+   "reqd": 1
+  },
+  {
+   "fieldname": "text",
+   "fieldtype": "Small Text",
+   "label": "Text",
+   "reqd": 1
+  },
+  {
+   "fieldname": "timestamp",
+   "fieldtype": "Datetime",
+   "label": "Timestamp"
+  }
+ ],
+ "istable": 1,
+ "modified": "2026-04-06 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Fun",
+ "name": "Status Comment",
+ "owner": "Administrator",
+ "permissions": [],
+ "states": [],
+ "track_changes": 0
+}

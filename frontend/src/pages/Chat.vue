@@ -849,7 +849,7 @@ const showEmojiPicker = ref(false)
 const activeEmojiCategory = ref('smileys')
 const replyingTo = ref(null)
 const reactionPickerMsgId = ref('')
-const messageReactions = ref({})  // { msgId: { '👍': ['user1','user2'], '❤️': ['user3'] } }
+const messageReactions = ref({})  // { msgId: { 'user1': '👍', 'user2': '❤️' } }
 
 const quickReactions = ['👍', '❤️', '😆', '😮', '😢']
 const reactionEmojis = ['👍','👎','❤️','🔥','😆','😮','😢','🙏','😍','🎉','👏','😂','🤔','💯','✅','😊','🥰','😭','😱','🤣','😅','😎','🤩','😇','🥳','😜','😋','😉','🤗','😴']
@@ -910,20 +910,20 @@ function openReactionPicker(msg) {
   reactionPickerMsgId.value = reactionPickerMsgId.value === msg.id ? '' : msg.id
 }
 
-function sendReaction(msg, emoji) {
+async function sendReaction(msg, emoji) {
   if (!msg.id) return
-  const reactions = messageReactions.value[msg.id] || {}
-  const users = reactions[emoji] ? [...reactions[emoji]] : []
-  const idx = users.indexOf(session.user)
-  if (idx === -1) {
-    users.push(session.user)
-  } else {
-    users.splice(idx, 1)
+  // toggle: if current user already reacted with this emoji, remove it
+  const displayReactions = messageReactions.value[msg.id] || {}
+  const alreadyReacted = displayReactions[emoji]?.includes(session.user)
+  const send = alreadyReacted ? '' : emoji
+  try {
+    const res = await frappeRequest({ url: 'fun.api.react_to_message', params: { message_id: msg.id, emoji: send } })
+    if (res?.reactions !== undefined) {
+      messageReactions.value = { ...messageReactions.value, [msg.id]: reactionsToDisplay(res.reactions) }
+    }
+  } catch (e) {
+    console.error('Reaction failed', e)
   }
-  const updated = { ...reactions, [emoji]: users }
-  // remove emoji key if no users
-  if (!updated[emoji].length) delete updated[emoji]
-  messageReactions.value = { ...messageReactions.value, [msg.id]: updated }
 }
 const lastSeen = ref(JSON.parse(localStorage.getItem('lastSeen') || '{}'))
 const selectedUserName = ref(localStorage.getItem(SELECTED_USER_KEY) || '')
@@ -1162,9 +1162,24 @@ function formatMessagePreview(data) {
   return text || buildAttachmentPreviewLabel(attachment)
 }
 
+// Convert backend { user: emoji } → display { emoji: [users] }
+function reactionsToDisplay(rawReactions) {
+  const display = {}
+  for (const [user, emoji] of Object.entries(rawReactions || {})) {
+    if (!display[emoji]) display[emoji] = []
+    display[emoji].push(user)
+  }
+  return display
+}
+
 function normalizeMessageData(data) {
   const attachment = normalizeAttachment(data?.attachment)
   const message = typeof data?.message === 'string' ? data.message : ''
+  // reactions from backend are { user: emoji }, store as-is for sending, convert for display
+  const rawReactions = data?.reactions || {}
+  if (data?.id && Object.keys(rawReactions).length) {
+    messageReactions.value[data.id] = reactionsToDisplay(rawReactions)
+  }
 
   return {
     attachment,
@@ -2011,6 +2026,13 @@ function handleRealtimeEnvelope(data) {
 
   if (data.event === 'stop_typing') {
     onStopTypingEvent(data.data)
+  }
+
+  if (data.event === 'message_reacted') {
+    const { message_id, reactions } = data.data || {}
+    if (message_id) {
+      messageReactions.value = { ...messageReactions.value, [message_id]: reactionsToDisplay(reactions || {}) }
+    }
   }
 }
 

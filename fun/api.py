@@ -3,7 +3,7 @@ import mimetypes
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, format_duration, now_datetime, time_diff_in_seconds
+from frappe.utils import add_days, add_to_date, format_duration, now_datetime, time_diff_in_seconds
 from frappe.utils.file_manager import save_file
 
 
@@ -233,6 +233,7 @@ def _build_chat_message_payload(conversation, row):
         "message": parsed_content["message"],
         "message_type": parsed_content["message_type"],
         "preview_text": parsed_content["preview_text"],
+        "reactions": frappe.parse_json(getattr(row, "reactions", None) or "{}"),
         "receiver": receiver,
         "sender": row.sender,
         "start_date": str(conversation.start_date),
@@ -930,3 +931,300 @@ def get_call_logs(other_user=None, limit=10):
     }
 
     return {"logs": serialized, "summary": summary}
+
+
+# ─── Status ───────────────────────────────────────────────────────────────────
+
+def _serialize_status(doc, current_user):
+    """Convert a User Status doc to a plain serializable dict."""
+    owner_name = frappe.db.get_value("User", doc.owner, "full_name") or doc.owner
+    owner_image = frappe.db.get_value("User", doc.owner, "user_image") or ""
+    reactions = frappe.parse_json(doc.reactions or "{}")
+    seen_by = frappe.parse_json(doc.seen_by or "[]")
+    comments = [
+        {
+            "commenter": row.commenter,
+            "commenter_name": frappe.db.get_value("User", row.commenter, "full_name") or row.commenter,
+            "text": row.text,
+            "timestamp": str(row.timestamp),
+        }
+        for row in (doc.comments or [])
+    ]
+    return {
+        "name": doc.name,
+        "owner": doc.owner,
+        "owner_name": owner_name,
+        "owner_image": owner_image,
+        "file_url": doc.file_url,
+        "media_kind": doc.media_kind,
+        "mime_type": doc.mime_type or "",
+        "caption": doc.caption or "",
+        "caption_color": getattr(doc, "caption_color", None) or "#ffffff",
+        "caption_size": getattr(doc, "caption_size", None) or "medium",
+        "bg_music_url": getattr(doc, "bg_music_url", None) or "",
+        "expires_at": str(doc.expires_at),
+        "creation": str(doc.creation),
+        "reactions": reactions,
+        "seen_by": seen_by,
+        "comments": comments,
+        "is_mine": doc.owner == current_user,
+    }
+
+
+@frappe.whitelist()
+def post_status(file_url, media_kind, mime_type=None, caption=None, caption_color=None, caption_size=None, bg_music_url=None):
+    """Create a new status post (photo or video, expires in 24h)."""
+    if not file_url:
+        frappe.throw(_("File URL is required."))
+    if media_kind not in ("image", "video"):
+        frappe.throw(_("media_kind must be 'image' or 'video'."))
+
+    current_user = frappe.session.user
+    expires_at = add_to_date(now_datetime(), hours=24)
+
+    doc = frappe.get_doc({
+        "doctype": "User Status",
+        "file_url": file_url,
+        "media_kind": media_kind,
+        "mime_type": mime_type or "",
+        "caption": caption or "",
+        "caption_color": caption_color or "#ffffff",
+        "caption_size": caption_size or "medium",
+        "bg_music_url": bg_music_url or "",
+        "expires_at": expires_at,
+        "reactions": "{}",
+        "seen_by": "[]",
+    })
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    payload = _serialize_status(doc, current_user)
+
+    # notify all other users in real-time
+    other_users = frappe.get_all(
+        "User",
+        filters={"name": ["not in", [current_user, "Guest"]], "enabled": 1},
+        fields=["name"],
+    )
+    for u in other_users:
+        frappe.publish_realtime("new_status", payload, user=u.name)
+
+    return payload
+
+
+@frappe.whitelist()
+def get_statuses():
+    """Return all active (non-expired) statuses grouped by owner."""
+    current_user = frappe.session.user
+    now = now_datetime()
+
+    rows = frappe.get_all(
+        "User Status",
+        filters=[["expires_at", ">", now]],
+        fields=["name"],
+        order_by="creation asc",
+    )
+
+    groups = {}  # owner -> group dict
+    for row in rows:
+        doc = frappe.get_doc("User Status", row.name)
+        s = _serialize_status(doc, current_user)
+        owner = s["owner"]
+        if owner not in groups:
+            groups[owner] = {
+                "owner": owner,
+                "owner_name": s["owner_name"],
+                "owner_image": s["owner_image"],
+                "is_mine": s["is_mine"],
+                "statuses": [],
+            }
+        groups[owner]["statuses"].append(s)
+
+    result = list(groups.values())
+
+    # compute all_seen per group
+    for g in result:
+        g["all_seen"] = all(
+            current_user in s["seen_by"] or s["is_mine"]
+            for s in g["statuses"]
+        )
+
+    # sort: own group first, then unseen, then seen
+    def sort_key(g):
+        if g["is_mine"]:
+            return 0
+        if not g["all_seen"]:
+            return 1
+        return 2
+
+    result.sort(key=sort_key)
+    return result
+
+
+@frappe.whitelist()
+def mark_status_seen(status_name):
+    """Mark a status as seen by the current user."""
+    current_user = frappe.session.user
+    try:
+        doc = frappe.get_doc("User Status", status_name)
+    except frappe.DoesNotExistError:
+        return {"ok": False}
+
+    seen_by = frappe.parse_json(doc.seen_by or "[]")
+    if current_user not in seen_by:
+        seen_by.append(current_user)
+        doc.seen_by = frappe.as_json(seen_by)
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    return {"ok": True, "seen_by": seen_by}
+
+
+@frappe.whitelist()
+def react_to_status(status_name, emoji):
+    """Add or remove an emoji reaction on a status."""
+    current_user = frappe.session.user
+    doc = frappe.get_doc("User Status", status_name)
+
+    reactions = frappe.parse_json(doc.reactions or "{}")
+
+    if not emoji:
+        # remove reaction
+        reactions.pop(current_user, None)
+    else:
+        reactions[current_user] = emoji
+
+    doc.reactions = frappe.as_json(reactions)
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    frappe.publish_realtime(
+        "status_reacted",
+        {"status_name": status_name, "reactions": reactions},
+        user=doc.owner,
+    )
+
+    # Send chat message to status owner when adding (not removing) a reaction
+    if emoji and current_user != doc.owner:
+        try:
+            reactor_name = frappe.db.get_value("User", current_user, "full_name") or current_user
+            chat_text = f"{emoji} {reactor_name} reacted to your status"
+            _store_chat_message(current_user, doc.owner, message=chat_text)
+        except Exception:
+            pass
+
+    return {"ok": True, "reactions": reactions}
+
+
+@frappe.whitelist()
+def comment_on_status(status_name, text):
+    """Add a text comment to a status."""
+    if not text or not text.strip():
+        frappe.throw(_("Comment text cannot be empty."))
+
+    current_user = frappe.session.user
+    doc = frappe.get_doc("User Status", status_name)
+
+    row = doc.append("comments", {
+        "commenter": current_user,
+        "text": text.strip(),
+        "timestamp": now_datetime(),
+    })
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+
+    comment = {
+        "commenter": current_user,
+        "commenter_name": frappe.db.get_value("User", current_user, "full_name") or current_user,
+        "text": row.text,
+        "timestamp": str(row.timestamp),
+    }
+
+    frappe.publish_realtime(
+        "status_commented",
+        {"status_name": status_name, "comment": comment},
+        user=doc.owner,
+    )
+
+    # Also send as a chat message to the status owner (if commenter != owner)
+    if current_user != doc.owner:
+        try:
+            chat_text = f"💬 {text.strip()}"
+            _store_chat_message(current_user, doc.owner, message=chat_text)
+        except Exception:
+            pass
+
+    return comment
+
+
+@frappe.whitelist()
+def delete_status(status_name):
+    """Delete own status and notify all users."""
+    current_user = frappe.session.user
+    doc = frappe.get_doc("User Status", status_name)
+
+    if doc.owner != current_user:
+        frappe.throw(_("You can only delete your own statuses."))
+
+    frappe.delete_doc("User Status", status_name, ignore_permissions=True)
+    frappe.db.commit()
+
+    all_users = frappe.get_all(
+        "User",
+        filters={"name": ["not in", ["Guest"]], "enabled": 1},
+        fields=["name"],
+    )
+    for u in all_users:
+        frappe.publish_realtime(
+            "status_deleted",
+            {"status_name": status_name},
+            user=u.name,
+        )
+
+    return {"ok": True, "status_name": status_name}
+
+
+# ─── Chat Message Reactions ───────────────────────────────────────────────────
+
+@frappe.whitelist()
+def react_to_message(message_id, emoji):
+    """Add or remove an emoji reaction on a chat message."""
+    current_user = frappe.session.user
+    message_name = str(message_id or "").strip()
+    if not message_name:
+        frappe.throw(_("Message ID is required."))
+
+    msg_row = frappe.db.get_value("Chat Message", message_name, ["parent", "sender"], as_dict=True)
+    if not msg_row:
+        frappe.throw(_("Message not found."))
+
+    conversation = frappe.get_doc("Conversation", msg_row.parent)
+    participants = {conversation.user_1, conversation.user_2}
+    if current_user not in participants:
+        frappe.throw(_("Not allowed."))
+
+    reactions = frappe.parse_json(
+        frappe.db.get_value("Chat Message", message_name, "reactions") or "{}"
+    )
+    emoji = str(emoji or "").strip()
+    if emoji:
+        reactions[current_user] = emoji
+    else:
+        reactions.pop(current_user, None)
+
+    frappe.db.set_value("Chat Message", message_name, "reactions", frappe.as_json(reactions), update_modified=False)
+    frappe.db.commit()
+
+    payload = {
+        "event": "message_reacted",
+        "data": {
+            "message_id": message_name,
+            "reactions": reactions,
+            "sender": conversation.user_1,
+            "receiver": conversation.user_2,
+        },
+    }
+    for user in participants:
+        frappe.publish_realtime("realtime", payload, user=user)
+
+    return {"ok": True, "reactions": reactions}
